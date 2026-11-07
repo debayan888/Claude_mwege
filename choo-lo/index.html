@@ -1,0 +1,385 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Choo Lo</title>
+<style>
+  @font-face { font-family: 'Serif'; font-style: italic; src: url(fonts/InstrumentSerif-400-italic-latin.woff2); }
+  @font-face { font-family: 'Serif'; font-style: normal; src: url(fonts/InstrumentSerif-400-normal-latin.woff2); }
+  @font-face { font-family: 'Inter'; src: url(fonts/Inter-400-latin.woff2); }
+  @font-face { font-family: 'Deva'; font-weight: 400; src: url(fonts/NotoSansDevanagari-400.ttf); }
+  @font-face { font-family: 'Deva'; font-weight: 700; src: url(fonts/NotoSansDevanagari-700.ttf); }
+  html, body { margin: 0; background: #000; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// A romantic lyric video for "Choo Lo". Every frame depends only on the time t,
+// so frames can be rendered in any order and in parallel.
+const W = 1920, H = 1080;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let AUDIO = null, LYRICS = [];
+
+// ---------- helpers ----------
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, p) => a + (b - a) * p;
+const smooth = (a, b, x) => { const p = clamp((x - a) / (b - a)); return p * p * (3 - 2 * p); };
+const ease = (p) => 1 - Math.pow(1 - clamp(p), 3);
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, p) => a.map((v, i) => Math.round(lerp(v, b[i], p)));
+const rgb = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+function audioAt(arr, t) {
+  if (!AUDIO) return 0;
+  const f = t * AUDIO.fps, i = Math.floor(f), p = f - i;
+  return lerp(arr[i] ?? 0, arr[i + 1] ?? 0, p);
+}
+// smoothed energy (looks back ~0.4s so motion is soft, not jittery)
+function energy(t) { let s = 0; for (let k = 0; k < 12; k++) s += audioAt(AUDIO ? AUDIO.full : [], t - k / 30); return s / 12; }
+function bass(t) { let m = 0; for (let k = 0; k < 4; k++) m = Math.max(m, audioAt(AUDIO ? AUDIO.bass : [], t - k / 30) * (1 - k * 0.18)); return m; }
+
+// ---------- colour story: night -> deep rose -> warm glow -> dawn ----------
+const SKY = [
+  [0,   '#05061a', '#1a0d33', '#3a1640'],
+  [25,  '#070824', '#2a1048', '#5a1d4f'],
+  [95,  '#0d0a2e', '#4a1550', '#8c2a5c'],
+  [140, '#170b33', '#5e1a55', '#b8436a'],
+  [205, '#1c0e3a', '#6b2258', '#d0607a'],
+  [226, '#2a1640', '#9c4a6a', '#f2a07e'],
+  [240, '#2a1640', '#9c4a6a', '#f2a07e'],
+];
+function sky(t) {
+  let i = 0; while (i < SKY.length - 2 && t >= SKY[i + 1][0]) i++;
+  const a = SKY[i], b = SKY[i + 1], p = smooth(a[0], b[0], t);
+  return [1, 2, 3].map((k) => mix(hex(a[k]), hex(b[k]), p));
+}
+
+// ---------- pre-rendered sprites ----------
+function sprite(size, stops) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'), r = size / 2, gr = g.createRadialGradient(r, r, 0, r, r, r);
+  stops.forEach(([o, col]) => gr.addColorStop(o, col));
+  g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
+}
+const GLOW_PINK = sprite(256, [[0, 'rgba(255,170,200,0.9)'], [0.35, 'rgba(255,120,170,0.35)'], [1, 'rgba(255,90,150,0)']]);
+const GLOW_GOLD = sprite(256, [[0, 'rgba(255,225,170,0.95)'], [0.3, 'rgba(255,190,120,0.35)'], [1, 'rgba(255,170,90,0)']]);
+const GLOW_WHITE = sprite(128, [[0, 'rgba(255,255,255,1)'], [0.2, 'rgba(255,240,250,0.6)'], [1, 'rgba(255,230,250,0)']]);
+const BOKEH = sprite(256, [[0, 'rgba(255,255,255,0.0)'], [0.72, 'rgba(255,255,255,0.10)'], [0.9, 'rgba(255,255,255,0.22)'], [1, 'rgba(255,255,255,0)']]);
+
+// film grain
+const GRAIN = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d'), d = g.createImageData(512, 512), r = rng(7);
+  for (let i = 0; i < d.data.length; i += 4) { const v = r() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 14; }
+  g.putImageData(d, 0, 0); return c;
+})();
+
+// city skyline silhouette with warm windows, drawn once
+const CITY = (() => {
+  const c = document.createElement('canvas'); c.width = W; c.height = 360;
+  const g = c.getContext('2d'), r = rng(42);
+  // far layer
+  g.fillStyle = 'rgba(30,12,45,0.75)';
+  for (let x = 0; x < W;) { const w = 40 + r() * 90, h = 70 + r() * 150; g.fillRect(x, 360 - h - 70, w, h + 70); x += w + 4; }
+  // near layer
+  for (let x = -20; x < W;) {
+    const w = 60 + r() * 120, h = 60 + r() * 190;
+    g.fillStyle = '#0a0514'; g.fillRect(x, 360 - h, w, h);
+    for (let wy = 360 - h + 14; wy < 340; wy += 22) for (let wx = x + 10; wx < x + w - 12; wx += 18)
+      if (r() < 0.22) { g.fillStyle = `rgba(255,${190 + r() * 50 | 0},${120 + r() * 60 | 0},${0.35 + r() * 0.5})`; g.fillRect(wx, wy, 7, 10); }
+    x += w + 2;
+  }
+  return c;
+})();
+
+// ---------- scene elements ----------
+const STARS = (() => { const r = rng(1); return Array.from({ length: 220 }, () => ({ x: r() * W, y: r() * H * 0.68, s: 0.4 + r() * r() * 1.6, ph: r() * 6.28, sp: 0.6 + r() * 2 })); })();
+function drawStars(t, fade) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const s of STARS) {
+    const a = (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph))) * fade;
+    ctx.globalAlpha = a; const z = s.s * 4;
+    ctx.drawImage(GLOW_WHITE, s.x - z, s.y - z, z * 2, z * 2);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+
+const MOON = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 200;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff1d6'; g.beginPath(); g.arc(100, 100, 64, 0, Math.PI * 2); g.fill();
+  g.globalCompositeOperation = 'destination-out';
+  g.beginPath(); g.arc(128, 84, 60, 0, Math.PI * 2); g.fill();
+  return c;
+})();
+function drawMoon(t) {
+  const x = 1500 - t * 0.6, y = 210 + Math.sin(t * 0.05) * 10;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.45; ctx.drawImage(GLOW_GOLD, x - 260, y - 260, 520, 520);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.shadowColor = 'rgba(255,230,190,0.9)'; ctx.shadowBlur = 30;
+  ctx.drawImage(MOON, x - 100, y - 100); ctx.shadowBlur = 0;
+}
+
+const BOK = (() => { const r = rng(9); return Array.from({ length: 46 }, () => ({ x: r() * W, y: r() * H, r: 30 + r() * 110, vx: (r() - 0.5) * 12, vy: -4 - r() * 10, ph: r() * 6.28, gold: r() < 0.4 })); })();
+function drawBokeh(t, e, b) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const k of BOK) {
+    const x = ((k.x + k.vx * t) % (W + 300) + W + 300) % (W + 300) - 150;
+    const y = ((k.y + k.vy * t) % (H + 300) + H + 300) % (H + 300) - 150;
+    const r = k.r * (1 + b * 0.25);
+    ctx.globalAlpha = (0.12 + e * 0.4) * (0.6 + 0.4 * Math.sin(t * 0.7 + k.ph));
+    ctx.drawImage(k.gold ? GLOW_GOLD : GLOW_PINK, x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha *= 0.8; ctx.drawImage(BOKEH, x - r * 0.6, y - r * 0.6, r * 1.2, r * 1.2);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+
+const FLIES = (() => { const r = rng(5); return Array.from({ length: 90 }, () => ({ x: r() * W, s: 3 + r() * 6, sp: 18 + r() * 40, ph: r() * 6.28, off: r() * H })); })();
+function drawFireflies(t, e) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const f of FLIES) {
+    const y = H - ((f.off + f.sp * t) % (H + 100));
+    const x = f.x + Math.sin(t * 0.8 + f.ph) * 40;
+    ctx.globalAlpha = (0.4 + 0.6 * Math.abs(Math.sin(t * 1.3 + f.ph))) * (0.4 + e);
+    const z = f.s * 4; ctx.drawImage(GLOW_GOLD, x - z, y - z, z * 2, z * 2);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+}
+
+// rose petals: drift down once the song opens up
+const PETALS = (() => { const r = rng(3); return Array.from({ length: 70 }, () => ({ x: r() * W, s: 10 + r() * 16, sp: 50 + r() * 70, rot: r() * 6.28, rs: (r() - 0.5) * 2, sw: 30 + r() * 80, ph: r() * 6.28, off: r() * (H + 200), hue: r() })); })();
+function drawPetals(t, amount) {
+  if (amount <= 0) return;
+  const n = Math.floor(PETALS.length * amount);
+  for (let i = 0; i < n; i++) {
+    const p = PETALS[i];
+    const y = ((p.off + p.sp * t) % (H + 200)) - 100;
+    const x = p.x + Math.sin(t * 0.6 + p.ph) * p.sw;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(p.rot + t * p.rs); ctx.scale(1, 0.55 + 0.45 * Math.sin(t * 2 + p.ph));
+    const g = ctx.createLinearGradient(-p.s, 0, p.s, 0);
+    g.addColorStop(0, p.hue < 0.5 ? '#ff7aa2' : '#ffb3c6'); g.addColorStop(1, p.hue < 0.5 ? '#c2185b' : '#ff6f91');
+    ctx.globalAlpha = 0.85 * Math.min(1, amount * 1.5);
+    ctx.fillStyle = g; ctx.beginPath();
+    ctx.moveTo(0, -p.s); ctx.bezierCurveTo(p.s, -p.s * 0.6, p.s * 0.8, p.s * 0.7, 0, p.s);
+    ctx.bezierCurveTo(-p.s * 0.8, p.s * 0.7, -p.s, -p.s * 0.6, 0, -p.s); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// the heart: a glowing line that draws itself, then beats with the bass
+function heartPoint(a, s) {
+  const x = 16 * Math.pow(Math.sin(a), 3);
+  const y = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a));
+  return [x * s, y * s];
+}
+function drawHeart(t, cx, cy, size, reveal, b, alpha) {
+  if (alpha <= 0 || reveal <= 0) return;
+  const beat = 1 + b * 0.07, s = size * beat / 16;
+  const N = 220, upto = Math.floor(N * reveal);
+  ctx.save(); ctx.translate(cx, cy); ctx.globalAlpha = alpha;
+  // soft halo
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = alpha * (0.25 + b * 0.35) * reveal;
+  ctx.drawImage(GLOW_PINK, -size * 2.2, -size * 2.2, size * 4.4, size * 4.4);
+  ctx.globalAlpha = alpha;
+  for (const [lw, col] of [[18, 'rgba(255,90,140,0.18)'], [9, 'rgba(255,140,180,0.45)'], [3, 'rgba(255,235,242,1)']]) {
+    ctx.beginPath();
+    for (let i = 0; i <= upto; i++) { const [x, y] = heartPoint(Math.PI + (i / N) * Math.PI * 2, s); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+  }
+  // the pen tip sparkle while drawing
+  if (reveal < 1) { const [x, y] = heartPoint(Math.PI + reveal * Math.PI * 2, s); ctx.drawImage(GLOW_WHITE, x - 30, y - 30, 60, 60); }
+  ctx.restore(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+}
+
+// a soft ring of light that breathes with the music
+function drawRing(t, cx, cy, R, alpha) {
+  if (alpha <= 0 || !AUDIO) return;
+  const N = 120;
+  ctx.save(); ctx.translate(cx, cy); ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const k = i < N / 2 ? i : N - i;  // mirrored
+    const v = audioAt(AUDIO.full, t - k * 0.025);
+    const len = 8 + v * 70;
+    ctx.globalAlpha = alpha * (0.25 + v * 0.6);
+    ctx.strokeStyle = i % 2 ? '#ffc7d9' : '#ffd9a8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R, Math.sin(a) * R); ctx.lineTo(Math.cos(a) * (R + len), Math.sin(a) * (R + len)); ctx.stroke();
+  }
+  ctx.restore(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+}
+
+// the local train: a string of warm windows gliding along a bridge
+function drawTrain(t, start, dur, dir) {
+  const p = (t - start) / dur; if (p < 0 || p > 1) return;
+  const y = H - 222, carW = 280, cars = 7, len = cars * (carW + 12);
+  const x = dir > 0 ? lerp(-len - 50, W + 50, p) : lerp(W + 50, -len - 50, p);
+  ctx.save();
+  for (let c = 0; c < cars; c++) {
+    const cx = x + c * (carW + 12);
+    ctx.fillStyle = '#0c0618'; ctx.beginPath(); ctx.roundRect(cx, y, carW, 62, 12); ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let w = 0; w < 9; w++) {
+      const wx = cx + 16 + w * 29;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffcf8a'; ctx.fillRect(wx, y + 14, 18, 22);
+      ctx.globalAlpha = 0.3; ctx.drawImage(GLOW_GOLD, wx - 24, y - 8, 66, 66);
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.restore();
+}
+
+function drawBridge() {
+  ctx.fillStyle = '#080311';
+  ctx.fillRect(0, H - 158, W, 14);
+  for (let x = 40; x < W; x += 160) { ctx.fillRect(x, H - 158, 12, 160); }
+}
+
+// ---------- text ----------
+function glowText(str, x, y, font, color, alpha, blur = 28, glow = 'rgba(255,120,170,0.9)') {
+  if (alpha <= 0) return;
+  ctx.save(); ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = alpha; ctx.shadowColor = glow; ctx.shadowBlur = blur; ctx.fillStyle = color;
+  ctx.fillText(str, x, y); ctx.shadowBlur = 0; ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+function drawTitle(t, t0, t1) {
+  const life = t - t0, span = t1 - t0; if (life < 0 || life > span) return;
+  const out = 1 - smooth(span - 2.5, span, life);
+  const a1 = ease((life - 0.3) / 2.5) * out, a2 = ease((life - 2.2) / 2.2) * out, a3 = ease((life - 3.6) / 2) * out;
+  const rise = (a) => (1 - a) * 30;
+  glowText('छू लो', W / 2, H / 2 - 120 + rise(a1), '700 150px Deva', '#fff3f7', a1, 40);
+  glowText('Choo Lo', W / 2, H / 2 + 40 + rise(a2), 'italic 120px Serif', '#ffe3ec', a2, 30);
+  ctx.save(); ctx.globalAlpha = a3; ctx.font = '30px Inter'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd7c2';
+  ctx.letterSpacing = '14px'; ctx.fillText('THE LOCAL TRAIN', W / 2, H / 2 + 160); ctx.restore();
+  // fine line under the artist
+  const lw = 260 * a3; ctx.save(); ctx.globalAlpha = a3 * 0.7; ctx.strokeStyle = '#ffd7c2'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(W / 2 - lw, H / 2 + 200); ctx.lineTo(W / 2 + lw, H / 2 + 200); ctx.stroke(); ctx.restore();
+}
+
+// lyrics: each line rises in word by word, then drifts up and fades
+function hasDeva(s) { return /[ऀ-ॿ]/.test(s); }
+function drawLyrics(t) {
+  let active = 0;
+  for (let i = 0; i < LYRICS.length; i++) {
+    const L = LYRICS[i], end = L.end, life = t - L.start;
+    if (life < -0.2 || t > end + 1.2) continue;
+    const outP = smooth(end, end + 1.2, t);
+    active = Math.max(active, 1 - outP);
+    const words = L.text.split(/\s+/);
+    const font = hasDeva(L.text) ? '500 78px Deva' : 'italic 96px Serif';
+    ctx.save(); ctx.font = font; ctx.textBaseline = 'middle';
+    const sp = ctx.measureText(' ').width, widths = words.map((w) => ctx.measureText(w).width);
+    const total = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+    const scale = Math.min(1, (W * 0.84) / total);
+    const y = H * 0.62 - outP * 50;
+    let x = W / 2 - (total * scale) / 2;
+    const per = Math.min(0.45, ((end - L.start) * 0.5) / words.length);
+    ctx.translate(0, y); ctx.scale(scale, scale); x /= scale;
+    words.forEach((w, k) => {
+      const p = ease((life - k * per) / 0.7) * (1 - outP);
+      if (p > 0) {
+        ctx.globalAlpha = p; ctx.shadowColor = 'rgba(255,110,160,0.95)'; ctx.shadowBlur = 30;
+        ctx.fillStyle = '#fff4f8'; ctx.fillText(w, x, (1 - p) * 24); ctx.shadowBlur = 0; ctx.fillText(w, x, (1 - p) * 24);
+      }
+      x += widths[k] + sp;
+    });
+    ctx.restore();
+  }
+  return active;
+}
+
+// ---------- the frame ----------
+const DUR = 233.6;
+window.drawFrame = function (t) {
+  const e = energy(t), b = bass(t);
+  const [top, mid, bot] = sky(t);
+
+  // sky
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, rgb(top)); g.addColorStop(0.55, rgb(mid)); g.addColorStop(1, rgb(bot));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // horizon glow that swells with the music
+  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25 + e * 0.35;
+  ctx.drawImage(GLOW_PINK, W / 2 - 1300, H - 500, 2600, 900);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+
+  const dawn = smooth(218, 232, t);
+  drawStars(t, 1 - dawn * 0.8);
+  drawMoon(t);
+  drawBokeh(t, e, b);
+
+  // the city and the train in the foreground
+  ctx.globalAlpha = 0.95; ctx.drawImage(CITY, 0, H - 360); ctx.globalAlpha = 1;
+  drawTrain(t, 26, 16, 1);
+  drawTrain(t, 132, 14, -1);
+  drawTrain(t, 210, 15, 1);
+  drawBridge();
+
+  drawFireflies(t, e);
+  drawPetals(t, smooth(92, 102, t) * (0.5 + e * 0.6) * (1 - smooth(222, 230, t)));
+
+  // centre: heart and ring, which step back while a lyric is on screen
+  const lyricOn = drawLyricsPeek(t);
+  const centreA = (1 - lyricOn * 0.65) * smooth(13, 16, t) * (1 - smooth(219, 223, t));
+  const hy = H * 0.42 - lyricOn * 60;
+  drawRing(t, W / 2, hy, 200 - lyricOn * 50, centreA * smooth(22, 28, t));
+  drawHeart(t, W / 2, hy, 120 - lyricOn * 30, ease((t - 14) / 9), b, centreA);
+
+  drawTitle(t, 0, 13);
+  drawTitle(t, 223.5, DUR + 3);
+  drawLyrics(t);
+
+  // vignette and grain
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.0);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(5,0,12,0.65)');
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  const gx = Math.floor(rng(Math.floor(t * 24))() * 512), gy = Math.floor(rng(Math.floor(t * 24) + 99)() * 512);
+  ctx.fillStyle = ctx.createPattern(GRAIN, 'repeat'); ctx.save(); ctx.translate(-gx, -gy); ctx.fillRect(gx, gy, W, H); ctx.restore();
+
+  // fade in from black and out to black
+  const fade = Math.min(smooth(0, 1.5, t), 1 - smooth(DUR - 2.5, DUR, t));
+  if (fade < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - fade})`; ctx.fillRect(0, 0, W, H); }
+};
+function drawLyricsPeek(t) {
+  let a = 0;
+  for (const L of LYRICS) if (t > L.start - 0.6 && t < L.end + 1.2) a = Math.max(a, smooth(L.start - 0.6, L.start, t) * (1 - smooth(L.end, L.end + 1.2, t)));
+  return a;
+}
+
+// ---------- loading ----------
+function parseLRC(src) {
+  const out = [];
+  for (const line of src.split(/\r?\n/)) {
+    const m = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/); if (!m) continue;
+    out.push({ start: +m[1] * 60 + +m[2], text: m[3].trim() });
+  }
+  out.sort((a, b) => a.start - b.start);
+  out.forEach((l, i) => { l.end = Math.min((out[i + 1]?.start ?? l.start + 6) - 0.4, l.start + 7); });
+  return out.filter((l) => l.text);
+}
+window.ready = (async () => {
+  AUDIO = await (await fetch('audio.json')).json();
+  try { const r = await fetch('lyrics.lrc'); if (r.ok) LYRICS = parseLRC(await r.text()); } catch {}
+  await Promise.all(['700 150px Deva', '500 78px Deva', 'italic 120px Serif', '30px Inter'].map((f) => document.fonts.load(f, 'छू लो Choo Lo')));
+  return LYRICS.length;
+})();
+
+// live preview when opened in a browser: ?t=40 starts at 40 s
+if (!navigator.webdriver) {
+  window.ready.then(() => {
+    const t0 = +(new URLSearchParams(location.search).get('t') || 0), s = performance.now();
+    const loop = () => { drawFrame(t0 + (performance.now() - s) / 1000); requestAnimationFrame(loop); }; loop();
+  });
+}
+</script>
+</body>
+</html>
