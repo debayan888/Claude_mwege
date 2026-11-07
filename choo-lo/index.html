@@ -5,10 +5,11 @@
 <title>Choo Lo</title>
 <style>
   @font-face { font-family: 'Serif'; font-style: italic; src: url(fonts/InstrumentSerif-400-italic-latin.woff2); }
-  @font-face { font-family: 'Serif'; font-style: normal; src: url(fonts/InstrumentSerif-400-normal-latin.woff2); }
   @font-face { font-family: 'Inter'; src: url(fonts/Inter-400-latin.woff2); }
-  @font-face { font-family: 'Deva'; font-weight: 400; src: url(fonts/NotoSansDevanagari-400.ttf); }
-  @font-face { font-family: 'Deva'; font-weight: 700; src: url(fonts/NotoSansDevanagari-700.ttf); }
+  @font-face { font-family: 'Pop'; font-weight: 800; src: url(fonts/Poppins-800-latin.woff2); }
+  @font-face { font-family: 'Pop'; font-weight: 300; src: url(fonts/Poppins-300-latin.woff2); }
+  @font-face { font-family: 'Script'; font-weight: 700; src: url(fonts/DancingScript-700-latin.woff2); }
+  @font-face { font-family: 'Neon'; src: url(fonts/Monoton-400-latin.woff2); }
   html, body { margin: 0; background: #000; }
   canvas { display: block; }
 </style>
@@ -16,11 +17,10 @@
 <body>
 <canvas id="c" width="1920" height="1080"></canvas>
 <script>
-// A romantic lyric video for "Choo Lo". Every frame depends only on the time t,
-// so frames can be rendered in any order and in parallel.
+// "Choo Lo" lyric video. Ten scenes, each with its own world, joined by
+// cinematic transitions. Every frame depends only on the time t.
 const W = 1920, H = 1080;
-const cv = document.getElementById('c');
-const ctx = cv.getContext('2d');
+const main = document.getElementById('c').getContext('2d');
 let AUDIO = null, LYRICS = [];
 
 // ---------- helpers ----------
@@ -28,340 +28,478 @@ const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, p) => a + (b - a) * p;
 const smooth = (a, b, x) => { const p = clamp((x - a) / (b - a)); return p * p * (3 - 2 * p); };
 const ease = (p) => 1 - Math.pow(1 - clamp(p), 3);
+const easeBack = (p) => { p = clamp(p); const c = 1.9; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
-const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const mix = (a, b, p) => a.map((v, i) => Math.round(lerp(v, b[i], p)));
-const rgb = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+const hash = (n) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+const wrap = (v, m) => ((v % m) + m) % m;
+function buffer() { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; }
+function grad(g, y0, y1, stops) { const gr = g.createLinearGradient(0, y0, 0, y1); stops.forEach(([o, c]) => gr.addColorStop(o, c)); return gr; }
 
-function audioAt(arr, t) {
-  if (!AUDIO) return 0;
-  const f = t * AUDIO.fps, i = Math.floor(f), p = f - i;
-  return lerp(arr[i] ?? 0, arr[i + 1] ?? 0, p);
-}
-// smoothed energy (looks back ~0.4s so motion is soft, not jittery)
+function audioAt(arr, t) { if (!AUDIO) return 0; const f = t * AUDIO.fps, i = Math.floor(f), p = f - i; return lerp(arr[i] ?? 0, arr[i + 1] ?? 0, p); }
 function energy(t) { let s = 0; for (let k = 0; k < 12; k++) s += audioAt(AUDIO ? AUDIO.full : [], t - k / 30); return s / 12; }
 function bass(t) { let m = 0; for (let k = 0; k < 4; k++) m = Math.max(m, audioAt(AUDIO ? AUDIO.bass : [], t - k / 30) * (1 - k * 0.18)); return m; }
+// a "hit" is a bass peak well above the recent average: used for flashes and bursts
+function hit(t) { const now = bass(t); let avg = 0; for (let k = 4; k < 40; k++) avg += audioAt(AUDIO ? AUDIO.bass : [], t - k / 30); avg /= 36; return clamp((now - avg - 0.12) * 3); }
 
-// ---------- colour story: night -> deep rose -> warm glow -> dawn ----------
-const SKY = [
-  [0,   '#05061a', '#1a0d33', '#3a1640'],
-  [25,  '#070824', '#2a1048', '#5a1d4f'],
-  [95,  '#0d0a2e', '#4a1550', '#8c2a5c'],
-  [140, '#170b33', '#5e1a55', '#b8436a'],
-  [205, '#1c0e3a', '#6b2258', '#d0607a'],
-  [226, '#2a1640', '#9c4a6a', '#f2a07e'],
-  [240, '#2a1640', '#9c4a6a', '#f2a07e'],
-];
-function sky(t) {
-  let i = 0; while (i < SKY.length - 2 && t >= SKY[i + 1][0]) i++;
-  const a = SKY[i], b = SKY[i + 1], p = smooth(a[0], b[0], t);
-  return [1, 2, 3].map((k) => mix(hex(a[k]), hex(b[k]), p));
-}
-
-// ---------- pre-rendered sprites ----------
+// ---------- sprites ----------
 function sprite(size, stops) {
   const c = document.createElement('canvas'); c.width = c.height = size;
   const g = c.getContext('2d'), r = size / 2, gr = g.createRadialGradient(r, r, 0, r, r, r);
-  stops.forEach(([o, col]) => gr.addColorStop(o, col));
-  g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
+  stops.forEach(([o, col]) => gr.addColorStop(o, col)); g.fillStyle = gr; g.fillRect(0, 0, size, size); return c;
 }
-const GLOW_PINK = sprite(256, [[0, 'rgba(255,170,200,0.9)'], [0.35, 'rgba(255,120,170,0.35)'], [1, 'rgba(255,90,150,0)']]);
-const GLOW_GOLD = sprite(256, [[0, 'rgba(255,225,170,0.95)'], [0.3, 'rgba(255,190,120,0.35)'], [1, 'rgba(255,170,90,0)']]);
-const GLOW_WHITE = sprite(128, [[0, 'rgba(255,255,255,1)'], [0.2, 'rgba(255,240,250,0.6)'], [1, 'rgba(255,230,250,0)']]);
-const BOKEH = sprite(256, [[0, 'rgba(255,255,255,0.0)'], [0.72, 'rgba(255,255,255,0.10)'], [0.9, 'rgba(255,255,255,0.22)'], [1, 'rgba(255,255,255,0)']]);
-
-// film grain
+const glow = (r, g, b, core = 0.9) => sprite(256, [[0, `rgba(${r},${g},${b},${core})`], [0.3, `rgba(${r},${g},${b},${core * 0.35})`], [1, `rgba(${r},${g},${b},0)`]]);
+const G_PINK = glow(255, 120, 170), G_GOLD = glow(255, 200, 120), G_WHITE = glow(255, 250, 245, 1),
+  G_TEAL = glow(90, 220, 230), G_AMBER = glow(255, 160, 60), G_BLUE = glow(120, 160, 255), G_VIOLET = glow(170, 110, 255);
 const GRAIN = (() => {
   const c = document.createElement('canvas'); c.width = c.height = 512;
   const g = c.getContext('2d'), d = g.createImageData(512, 512), r = rng(7);
-  for (let i = 0; i < d.data.length; i += 4) { const v = r() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 14; }
+  for (let i = 0; i < d.data.length; i += 4) { const v = r() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 16; }
   g.putImageData(d, 0, 0); return c;
 })();
+function add(g, spr, x, y, r, a) { if (a <= 0) return; g.globalAlpha = a; g.drawImage(spr, x - r, y - r, r * 2, r * 2); }
+function lighter(g, fn) { g.save(); g.globalCompositeOperation = 'lighter'; fn(); g.restore(); }
 
-// city skyline silhouette with warm windows, drawn once
-const CITY = (() => {
-  const c = document.createElement('canvas'); c.width = W; c.height = 360;
-  const g = c.getContext('2d'), r = rng(42);
-  // far layer
-  g.fillStyle = 'rgba(30,12,45,0.75)';
-  for (let x = 0; x < W;) { const w = 40 + r() * 90, h = 70 + r() * 150; g.fillRect(x, 360 - h - 70, w, h + 70); x += w + 4; }
-  // near layer
+// shared skyline (used in two scenes)
+function skyline(seed, base, color, windows) {
+  const c = document.createElement('canvas'); c.width = W; c.height = 420;
+  const g = c.getContext('2d'), r = rng(seed);
   for (let x = -20; x < W;) {
-    const w = 60 + r() * 120, h = 60 + r() * 190;
-    g.fillStyle = '#0a0514'; g.fillRect(x, 360 - h, w, h);
-    for (let wy = 360 - h + 14; wy < 340; wy += 22) for (let wx = x + 10; wx < x + w - 12; wx += 18)
-      if (r() < 0.22) { g.fillStyle = `rgba(255,${190 + r() * 50 | 0},${120 + r() * 60 | 0},${0.35 + r() * 0.5})`; g.fillRect(wx, wy, 7, 10); }
+    const w = 50 + r() * 120, h = base * (0.35 + r() * 0.65);
+    g.fillStyle = color; g.fillRect(x, 420 - h, w, h);
+    if (r() < 0.25) g.fillRect(x + w * 0.45, 420 - h - 30, 4, 30);
+    if (windows) for (let wy = 420 - h + 12; wy < 410; wy += 20) for (let wx = x + 8; wx < x + w - 10; wx += 16)
+      if (r() < 0.2) { g.fillStyle = `rgba(255,${190 + r() * 50 | 0},${110 + r() * 70 | 0},${0.3 + r() * 0.6})`; g.fillRect(wx, wy, 6, 9); g.fillStyle = color; }
     x += w + 2;
   }
   return c;
-})();
-
-// ---------- scene elements ----------
-const STARS = (() => { const r = rng(1); return Array.from({ length: 220 }, () => ({ x: r() * W, y: r() * H * 0.68, s: 0.4 + r() * r() * 1.6, ph: r() * 6.28, sp: 0.6 + r() * 2 })); })();
-function drawStars(t, fade) {
-  ctx.globalCompositeOperation = 'lighter';
-  for (const s of STARS) {
-    const a = (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph))) * fade;
-    ctx.globalAlpha = a; const z = s.s * 4;
-    ctx.drawImage(GLOW_WHITE, s.x - z, s.y - z, z * 2, z * 2);
-  }
-  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 }
+const CITY_FAR = skyline(11, 260, 'rgba(40,20,70,0.85)', false);
+const CITY_NEAR = skyline(42, 330, '#0b0614', true);
 
-const MOON = (() => {
-  const c = document.createElement('canvas'); c.width = c.height = 200;
-  const g = c.getContext('2d');
-  g.fillStyle = '#fff1d6'; g.beginPath(); g.arc(100, 100, 64, 0, Math.PI * 2); g.fill();
-  g.globalCompositeOperation = 'destination-out';
-  g.beginPath(); g.arc(128, 84, 60, 0, Math.PI * 2); g.fill();
-  return c;
-})();
-function drawMoon(t) {
-  const x = 1500 - t * 0.6, y = 210 + Math.sin(t * 0.05) * 10;
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.45; ctx.drawImage(GLOW_GOLD, x - 260, y - 260, 520, 520);
-  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  ctx.shadowColor = 'rgba(255,230,190,0.9)'; ctx.shadowBlur = 30;
-  ctx.drawImage(MOON, x - 100, y - 100); ctx.shadowBlur = 0;
-}
+// =====================================================================
+// SCENES. Each draws a full frame on g. lt = seconds since scene start.
+// =====================================================================
 
-const BOK = (() => { const r = rng(9); return Array.from({ length: 46 }, () => ({ x: r() * W, y: r() * H, r: 30 + r() * 110, vx: (r() - 0.5) * 12, vy: -4 - r() * 10, ph: r() * 6.28, gold: r() < 0.4 })); })();
-function drawBokeh(t, e, b) {
-  ctx.globalCompositeOperation = 'lighter';
-  for (const k of BOK) {
-    const x = ((k.x + k.vx * t) % (W + 300) + W + 300) % (W + 300) - 150;
-    const y = ((k.y + k.vy * t) % (H + 300) + H + 300) % (H + 300) - 150;
-    const r = k.r * (1 + b * 0.25);
-    ctx.globalAlpha = (0.12 + e * 0.4) * (0.6 + 0.4 * Math.sin(t * 0.7 + k.ph));
-    ctx.drawImage(k.gold ? GLOW_GOLD : GLOW_PINK, x - r, y - r, r * 2, r * 2);
-    ctx.globalAlpha *= 0.8; ctx.drawImage(BOKEH, x - r * 0.6, y - r * 0.6, r * 1.2, r * 1.2);
-  }
-  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-}
-
-const FLIES = (() => { const r = rng(5); return Array.from({ length: 90 }, () => ({ x: r() * W, s: 3 + r() * 6, sp: 18 + r() * 40, ph: r() * 6.28, off: r() * H })); })();
-function drawFireflies(t, e) {
-  ctx.globalCompositeOperation = 'lighter';
-  for (const f of FLIES) {
-    const y = H - ((f.off + f.sp * t) % (H + 100));
-    const x = f.x + Math.sin(t * 0.8 + f.ph) * 40;
-    ctx.globalAlpha = (0.4 + 0.6 * Math.abs(Math.sin(t * 1.3 + f.ph))) * (0.4 + e);
-    const z = f.s * 4; ctx.drawImage(GLOW_GOLD, x - z, y - z, z * 2, z * 2);
-  }
-  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-}
-
-// rose petals: drift down once the song opens up
-const PETALS = (() => { const r = rng(3); return Array.from({ length: 70 }, () => ({ x: r() * W, s: 10 + r() * 16, sp: 50 + r() * 70, rot: r() * 6.28, rs: (r() - 0.5) * 2, sw: 30 + r() * 80, ph: r() * 6.28, off: r() * (H + 200), hue: r() })); })();
-function drawPetals(t, amount) {
-  if (amount <= 0) return;
-  const n = Math.floor(PETALS.length * amount);
-  for (let i = 0; i < n; i++) {
-    const p = PETALS[i];
-    const y = ((p.off + p.sp * t) % (H + 200)) - 100;
-    const x = p.x + Math.sin(t * 0.6 + p.ph) * p.sw;
-    ctx.save(); ctx.translate(x, y); ctx.rotate(p.rot + t * p.rs); ctx.scale(1, 0.55 + 0.45 * Math.sin(t * 2 + p.ph));
-    const g = ctx.createLinearGradient(-p.s, 0, p.s, 0);
-    g.addColorStop(0, p.hue < 0.5 ? '#ff7aa2' : '#ffb3c6'); g.addColorStop(1, p.hue < 0.5 ? '#c2185b' : '#ff6f91');
-    ctx.globalAlpha = 0.85 * Math.min(1, amount * 1.5);
-    ctx.fillStyle = g; ctx.beginPath();
-    ctx.moveTo(0, -p.s); ctx.bezierCurveTo(p.s, -p.s * 0.6, p.s * 0.8, p.s * 0.7, 0, p.s);
-    ctx.bezierCurveTo(-p.s * 0.8, p.s * 0.7, -p.s, -p.s * 0.6, 0, -p.s); ctx.fill();
-    ctx.restore();
-  }
-  ctx.globalAlpha = 1;
-}
-
-// the heart: a glowing line that draws itself, then beats with the bass
-function heartPoint(a, s) {
-  const x = 16 * Math.pow(Math.sin(a), 3);
-  const y = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a));
-  return [x * s, y * s];
-}
-function drawHeart(t, cx, cy, size, reveal, b, alpha) {
-  if (alpha <= 0 || reveal <= 0) return;
-  const beat = 1 + b * 0.07, s = size * beat / 16;
-  const N = 220, upto = Math.floor(N * reveal);
-  ctx.save(); ctx.translate(cx, cy); ctx.globalAlpha = alpha;
-  // soft halo
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = alpha * (0.25 + b * 0.35) * reveal;
-  ctx.drawImage(GLOW_PINK, -size * 2.2, -size * 2.2, size * 4.4, size * 4.4);
-  ctx.globalAlpha = alpha;
-  for (const [lw, col] of [[18, 'rgba(255,90,140,0.18)'], [9, 'rgba(255,140,180,0.45)'], [3, 'rgba(255,235,242,1)']]) {
-    ctx.beginPath();
-    for (let i = 0; i <= upto; i++) { const [x, y] = heartPoint(Math.PI + (i / N) * Math.PI * 2, s); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-    ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
-  }
-  // the pen tip sparkle while drawing
-  if (reveal < 1) { const [x, y] = heartPoint(Math.PI + reveal * Math.PI * 2, s); ctx.drawImage(GLOW_WHITE, x - 30, y - 30, 60, 60); }
-  ctx.restore(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-}
-
-// a soft ring of light that breathes with the music
-function drawRing(t, cx, cy, R, alpha) {
-  if (alpha <= 0 || !AUDIO) return;
-  const N = 120;
-  ctx.save(); ctx.translate(cx, cy); ctx.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
-    const k = i < N / 2 ? i : N - i;  // mirrored
-    const v = audioAt(AUDIO.full, t - k * 0.025);
-    const len = 8 + v * 70;
-    ctx.globalAlpha = alpha * (0.25 + v * 0.6);
-    ctx.strokeStyle = i % 2 ? '#ffc7d9' : '#ffd9a8'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(Math.cos(a) * R, Math.sin(a) * R); ctx.lineTo(Math.cos(a) * (R + len), Math.sin(a) * (R + len)); ctx.stroke();
-  }
-  ctx.restore(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-}
-
-// the local train: a string of warm windows gliding along a bridge
-function drawTrain(t, start, dur, dir) {
-  const p = (t - start) / dur; if (p < 0 || p > 1) return;
-  const y = H - 222, carW = 280, cars = 7, len = cars * (carW + 12);
-  const x = dir > 0 ? lerp(-len - 50, W + 50, p) : lerp(W + 50, -len - 50, p);
-  ctx.save();
-  for (let c = 0; c < cars; c++) {
-    const cx = x + c * (carW + 12);
-    ctx.fillStyle = '#0c0618'; ctx.beginPath(); ctx.roundRect(cx, y, carW, 62, 12); ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';
-    for (let w = 0; w < 9; w++) {
-      const wx = cx + 16 + w * 29;
-      ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffcf8a'; ctx.fillRect(wx, y + 14, 18, 22);
-      ctx.globalAlpha = 0.3; ctx.drawImage(GLOW_GOLD, wx - 24, y - 8, 66, 66);
+// 1. TITLE: a dark room of light. Letters bloom out of blur, a flare sweeps.
+function sTitle(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#07030f'], [0.6, '#1a0826'], [1, '#2b0b2e']]); g.fillRect(0, 0, W, H);
+  lighter(g, () => {
+    add(g, G_VIOLET, W * 0.3 + Math.sin(lt * 0.3) * 200, H * 0.4, 900, 0.35);
+    add(g, G_PINK, W * 0.75 + Math.cos(lt * 0.25) * 160, H * 0.65, 800, 0.3);
+    const r = rng(3);
+    for (let i = 0; i < 70; i++) { const x = r() * W, y = wrap(r() * H - lt * (10 + r() * 30), H), s = 2 + r() * 5; add(g, G_GOLD, x, y, s * 4, 0.5 * (0.5 + 0.5 * Math.sin(lt * 2 + i))); }
+  });
+  const word = 'Choo Lo';
+  g.save(); g.font = '700 230px Script'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  const total = g.measureText(word).width; let x = W / 2 - total / 2;
+  [...word].forEach((ch, i) => {
+    const p = ease((lt - 1.2 - i * 0.16) / 1.1), w = g.measureText(ch).width;
+    if (p > 0) {
+      g.globalAlpha = p; g.filter = `blur(${(1 - p) * 18}px)`;
+      g.shadowColor = 'rgba(255,90,160,0.9)'; g.shadowBlur = 40;
+      g.fillStyle = grad(g, H / 2 - 120, H / 2 + 80, [[0, '#fff1f6'], [0.6, '#ffb3cf'], [1, '#ff7aa8']]);
+      g.fillText(ch, x, H / 2 - 40 + (1 - p) * 40);
     }
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    x += w;
+  });
+  g.filter = 'none'; g.shadowBlur = 0;
+  const a = ease((lt - 3.4) / 1.4) * (1 - smooth(11.5, 13.5, lt));
+  g.globalAlpha = a; g.font = '300 34px Pop'; g.textAlign = 'center'; g.letterSpacing = '22px'; g.fillStyle = '#ffd9e6';
+  g.fillText('THE LOCAL TRAIN', W / 2 + 11, H / 2 + 130);
+  g.letterSpacing = '0px'; g.globalAlpha = a * 0.6; g.fillStyle = '#ffd9e6';
+  const lw = 300 * ease((lt - 3.6) / 1.5); g.fillRect(W / 2 - lw, H / 2 + 180, lw * 2, 1.5);
+  g.restore();
+  // the anamorphic flare that sweeps across as the title lands
+  const fp = (lt - 2.0) / 2.2;
+  if (fp > 0 && fp < 1) lighter(g, () => {
+    const fx = lerp(-200, W + 200, ease(fp)), fa = Math.sin(fp * Math.PI);
+    g.globalAlpha = fa * 0.9; g.drawImage(G_WHITE, fx - 900, H / 2 - 50, 1800, 20);
+    g.globalAlpha = fa * 0.5; g.drawImage(G_PINK, fx - 260, H / 2 - 300, 520, 520);
+  });
+}
+
+// 2. TRAIN WINDOW IN THE RAIN: city lights stream past behind wet glass.
+const DROPS = (() => { const r = rng(21); return Array.from({ length: 160 }, () => ({ x: r() * W, y: r() * H, s: 3 + r() * r() * 14, sp: r() < 0.25 ? 40 + r() * 120 : 0, ph: r() * 50 })); })();
+function sWindow(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#050a18'], [0.55, '#0c1630'], [1, '#1a1030']]); g.fillRect(0, 0, W, H);
+  lighter(g, () => {
+    const r = rng(5);
+    for (let i = 0; i < 60; i++) { const sp = 60 + r() * 60, x = wrap(r() * (W + 400) - lt * sp, W + 400) - 200, y = H * (0.35 + r() * 0.35);
+      add(g, r() < 0.5 ? G_AMBER : G_TEAL, x, y, 40 + r() * 70, 0.35 + e * 0.3); }
+    for (let i = 0; i < 26; i++) { const sp = 500 + r() * 400, x = wrap(r() * (W + 800) - lt * sp, W + 800) - 400, y = H * (0.2 + r() * 0.7);
+      g.globalAlpha = 0.25; g.drawImage(r() < 0.5 ? G_PINK : G_GOLD, x - 260, y - 50, 520, 100); }
+  });
+  g.fillStyle = 'rgba(2,3,8,0.85)';
+  for (let i = 0; i < 3; i++) { const x = wrap(i * 800 - lt * 1400, W + 1200) - 300; g.fillRect(x, 0, 26, H); }
+  for (const d of DROPS) {
+    const y = d.sp ? wrap(d.y + (lt + d.ph) * d.sp, H + 40) - 20 : d.y;
+    if (d.sp) { g.strokeStyle = 'rgba(200,220,255,0.12)'; g.lineWidth = d.s * 0.5; g.beginPath(); g.moveTo(d.x, y - 80); g.lineTo(d.x, y); g.stroke(); }
+    g.fillStyle = 'rgba(180,200,255,0.10)'; g.beginPath(); g.ellipse(d.x, y, d.s * 0.8, d.s, 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.55)'; g.beginPath(); g.arc(d.x - d.s * 0.25, y - d.s * 0.35, d.s * 0.22, 0, 7); g.fill();
   }
-  ctx.restore();
+  g.fillStyle = '#05040a';
+  g.fillRect(0, 0, W, 70); g.fillRect(0, H - 110, W, 110); g.fillRect(0, 0, 90, H); g.fillRect(W - 90, 0, 90, H);
+  g.strokeStyle = 'rgba(255,200,150,0.18)'; g.lineWidth = 3; g.beginPath(); g.roundRect(90, 70, W - 180, H - 180, 40); g.stroke();
 }
 
-function drawBridge() {
-  ctx.fillStyle = '#080311';
-  ctx.fillRect(0, H - 158, W, 14);
-  for (let x = 40; x < W; x += 160) { ctx.fillRect(x, H - 158, 12, 160); }
-}
-
-// ---------- text ----------
-function glowText(str, x, y, font, color, alpha, blur = 28, glow = 'rgba(255,120,170,0.9)') {
-  if (alpha <= 0) return;
-  ctx.save(); ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.globalAlpha = alpha; ctx.shadowColor = glow; ctx.shadowBlur = blur; ctx.fillStyle = color;
-  ctx.fillText(str, x, y); ctx.shadowBlur = 0; ctx.fillText(str, x, y);
-  ctx.restore();
-}
-
-function drawTitle(t, t0, t1) {
-  const life = t - t0, span = t1 - t0; if (life < 0 || life > span) return;
-  const out = 1 - smooth(span - 2.5, span, life);
-  const a1 = ease((life - 0.3) / 2.5) * out, a2 = ease((life - 2.2) / 2.2) * out, a3 = ease((life - 3.6) / 2) * out;
-  const rise = (a) => (1 - a) * 30;
-  glowText('छू लो', W / 2, H / 2 - 120 + rise(a1), '700 150px Deva', '#fff3f7', a1, 40);
-  glowText('Choo Lo', W / 2, H / 2 + 40 + rise(a2), 'italic 120px Serif', '#ffe3ec', a2, 30);
-  ctx.save(); ctx.globalAlpha = a3; ctx.font = '30px Inter'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffd7c2';
-  ctx.letterSpacing = '14px'; ctx.fillText('THE LOCAL TRAIN', W / 2, H / 2 + 160); ctx.restore();
-  // fine line under the artist
-  const lw = 260 * a3; ctx.save(); ctx.globalAlpha = a3 * 0.7; ctx.strokeStyle = '#ffd7c2'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(W / 2 - lw, H / 2 + 200); ctx.lineTo(W / 2 + lw, H / 2 + 200); ctx.stroke(); ctx.restore();
-}
-
-// lyrics: each line rises in word by word, then drifts up and fades
-function hasDeva(s) { return /[ऀ-ॿ]/.test(s); }
-function drawLyrics(t) {
-  let active = 0;
-  for (let i = 0; i < LYRICS.length; i++) {
-    const L = LYRICS[i], end = L.end, life = t - L.start;
-    if (life < -0.2 || t > end + 0.5) continue;
-    const outP = smooth(end, end + 0.5, t);
-    active = Math.max(active, 1 - outP);
-    const words = L.text.split(/\s+/);
-    const font = hasDeva(L.text) ? '500 92px Deva' : 'italic 96px Serif';
-    ctx.save(); ctx.font = font; ctx.textBaseline = 'middle';
-    const sp = ctx.measureText(' ').width, widths = words.map((w) => ctx.measureText(w).width);
-    const total = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
-    const scale = Math.min(1, (W * 0.84) / total);
-    const y = H * 0.62 - outP * 50;
-    let x = W / 2 - (total * scale) / 2;
-    const per = Math.min(0.45, ((end - L.start) * 0.5) / words.length);
-    ctx.translate(0, y); ctx.scale(scale, scale); x /= scale;
-    words.forEach((w, k) => {
-      const p = ease((life - k * per) / 0.7) * (1 - outP);
-      if (p > 0) {
-        ctx.globalAlpha = p; ctx.shadowColor = 'rgba(255,110,160,0.95)'; ctx.shadowBlur = 30;
-        ctx.fillStyle = '#fff4f8'; ctx.fillText(w, x, (1 - p) * 24); ctx.shadowBlur = 0; ctx.fillText(w, x, (1 - p) * 24);
-      }
-      x += widths[k] + sp;
+// 3. EMPTY PLATFORM AT NIGHT: lamps, rain in the light, a wet floor.
+function sPlatform(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#04060f'], [0.5, '#0d1328'], [0.62, '#181a33'], [1, '#07070d']]); g.fillRect(0, 0, W, H);
+  const hy = H * 0.58, vx = W * 0.5 + Math.sin(lt * 0.1) * 40;
+  g.fillStyle = grad(g, hy, H, [[0, '#14142a'], [1, '#030308']]);
+  g.beginPath(); g.moveTo(vx - 40, hy); g.lineTo(vx + 40, hy); g.lineTo(W + 600, H); g.lineTo(-600, H); g.fill();
+  g.strokeStyle = 'rgba(255,210,90,0.55)'; g.lineWidth = 6; g.setLineDash([60, 40]); g.lineDashOffset = -lt * 120;
+  g.beginPath(); g.moveTo(vx + 30, hy); g.lineTo(W + 300, H); g.stroke(); g.setLineDash([]);
+  for (let i = 5; i >= 0; i--) {
+    const z = wrap(i - lt * 0.12, 6), s = 1 / (0.5 + z), x = vx - 60 - 900 * s, y = hy - 560 * s, base = hy + 520 * s * 0.55;
+    g.fillStyle = '#05050a'; g.fillRect(x - 6 * s, y, 12 * s, base - y);
+    lighter(g, () => {
+      const cone = g.createLinearGradient(0, y, 0, base);
+      cone.addColorStop(0, 'rgba(255,190,110,0.35)'); cone.addColorStop(1, 'rgba(255,190,110,0)');
+      g.fillStyle = cone; g.beginPath(); g.moveTo(x + 10 * s, y + 10 * s); g.lineTo(x + 250 * s, base); g.lineTo(x - 230 * s, base); g.fill();
+      add(g, G_AMBER, x + 10 * s, y + 6 * s, 160 * s, 0.9);
+      add(g, G_WHITE, x + 10 * s, y + 6 * s, 30 * s, 1);
+      add(g, G_AMBER, x + 10 * s, base + 40 * s, 200 * s, 0.25);
     });
-    ctx.restore();
   }
-  return active;
+  const r = rng(13);
+  g.strokeStyle = 'rgba(190,210,255,0.35)'; g.lineWidth = 1.5; g.beginPath();
+  for (let i = 0; i < 380; i++) { const x = r() * W, y = wrap(r() * H + lt * (900 + r() * 500), H + 60) - 60; g.moveTo(x, y); g.lineTo(x - 6, y + 34); }
+  g.stroke();
+  for (let i = 0; i < 14; i++) { const k = Math.floor(lt * 1.6 + i / 14 * 1.6), p = wrap(lt * 1.6 + i / 14 * 1.6, 1);
+    const x = hash(k * 31 + i) * W, y = hy + 60 + hash(k * 17 + i) * (H - hy - 60);
+    g.strokeStyle = `rgba(200,210,255,${0.35 * (1 - p)})`; g.lineWidth = 1.5; g.beginPath(); g.ellipse(x, y, 10 + p * 70, (10 + p * 70) * 0.25, 0, 0, 7); g.stroke(); }
+}
+
+// heart-shaped bursts that fire on strong bass hits
+function heartXY(a) { return [16 * Math.pow(Math.sin(a), 3), -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a))]; }
+const HITS = [];
+function burst(g, t, from, to) {
+  for (const ht of HITS) {
+    if (ht < from || ht > to) continue; const age = t - ht; if (age < 0 || age > 1.6) continue;
+    const cx = W * (0.15 + hash(ht) * 0.7), cy = H * (0.18 + hash(ht * 3) * 0.25), p = ease(age / 1.6);
+    lighter(g, () => { for (let i = 0; i < 40; i++) { const [hx, hy] = heartXY((i / 40) * Math.PI * 2), s = 14 * p;
+      const x = cx + hx * s, y = cy + hy * s + age * age * 40;
+      add(g, G_WHITE, x, y, 10, (1 - p) * 0.9); add(g, i % 2 ? G_PINK : G_GOLD, x, y, 26, (1 - p) * 0.6); } });
+  }
+}
+
+// 4. CHORUS ONE: an electric sunset, clouds, birds and bursts of light on the beat.
+function sSunset(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#2a0a4a'], [0.35, '#8e1f6b'], [0.62, '#ff5e62'], [0.8, '#ff9966'], [1, '#ffc58a']]); g.fillRect(0, 0, W, H);
+  const sy = H * 0.66 + lt * 2;
+  lighter(g, () => { add(g, G_GOLD, W / 2, sy, 700 + e * 200, 0.7); add(g, G_PINK, W / 2, sy, 1100, 0.35); });
+  g.fillStyle = '#fff1c9'; g.beginPath(); g.arc(W / 2, sy, 170, 0, 7); g.fill();
+  lighter(g, () => { g.save(); g.translate(W / 2, sy); g.rotate(lt * 0.04);
+    for (let i = 0; i < 16; i++) { g.rotate(Math.PI / 8); g.fillStyle = `rgba(255,220,170,${0.04 + e * 0.05})`; g.beginPath(); g.moveTo(0, 0); g.lineTo(1400, -60); g.lineTo(1400, 60); g.fill(); }
+    g.restore(); });
+  const r = rng(8);
+  for (let i = 0; i < 9; i++) { const y = H * (0.18 + r() * 0.4), sp = 8 + r() * 20, x = wrap(r() * (W + 900) + lt * sp, W + 900) - 450, s = 0.6 + r();
+    g.fillStyle = `rgba(255,${150 + r() * 60 | 0},${170 + r() * 40 | 0},0.22)`;
+    for (let k = 0; k < 5; k++) { g.beginPath(); g.ellipse(x + k * 80 * s, y + Math.sin(k) * 14, 140 * s, 40 * s, 0, 0, 7); g.fill(); } }
+  g.fillStyle = grad(g, H * 0.78, H, [[0, '#6e1d5c'], [1, '#1b0a2a']]); g.fillRect(0, H * 0.78, W, H * 0.22);
+  lighter(g, () => { for (let i = 0; i < 26; i++) { const y = H * 0.79 + i * 9, w = (260 - i * 6) * (0.7 + 0.3 * Math.sin(lt * 3 + i)); g.fillStyle = `rgba(255,220,170,${0.5 - i * 0.017})`; g.fillRect(W / 2 - w / 2 + Math.sin(lt * 2 + i * 1.7) * 20, y, w, 3); } });
+  g.strokeStyle = 'rgba(40,10,40,0.85)'; g.lineWidth = 3;
+  for (let i = 0; i < 7; i++) { const x = wrap(-200 + lt * 70 + i * 90, W + 400) - 200, y = H * 0.3 + Math.sin(i * 2) * 60 + Math.sin(lt + i) * 10, f = Math.sin(lt * 8 + i) * 12;
+    g.beginPath(); g.moveTo(x - 18, y - f); g.quadraticCurveTo(x - 8, y - 6, x, y); g.quadraticCurveTo(x + 8, y - 6, x + 18, y - f); g.stroke(); }
+  burst(g, t, 51, 77);
+}
+
+// 5. MOONLIT SEA: a giant moon, its path on the water, shooting stars.
+function sSea(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#02030c'], [0.5, '#0b1440'], [0.66, '#253070'], [1, '#05081c']]); g.fillRect(0, 0, W, H);
+  const r = rng(2);
+  lighter(g, () => { for (let i = 0; i < 260; i++) { const x = r() * W, y = r() * H * 0.62, s = r() * r() * 3 + 0.5; add(g, G_WHITE, x, y, s * 4, 0.4 + 0.6 * Math.abs(Math.sin(lt * (0.5 + r()) + i))); } });
+  const mx = W * 0.5, my = H * 0.36 - lt * 1.5;
+  lighter(g, () => { add(g, G_BLUE, mx, my, 700, 0.6); add(g, G_WHITE, mx, my, 330, 0.5); });
+  g.fillStyle = '#f4f2ff'; g.beginPath(); g.arc(mx, my, 160, 0, 7); g.fill();
+  g.fillStyle = 'rgba(180,180,220,0.25)'; [[-40, -30, 30], [50, 20, 22], [-20, 60, 16], [30, -70, 12]].forEach(([dx, dy, rr]) => { g.beginPath(); g.arc(mx + dx, my + dy, rr, 0, 7); g.fill(); });
+  const hy = H * 0.66; g.fillStyle = grad(g, hy, H, [[0, '#101a4a'], [1, '#02030c']]); g.fillRect(0, hy, W, H - hy);
+  lighter(g, () => { for (let i = 0; i < 46; i++) { const y = hy + 4 + i * i * 0.2, w = (60 + i * 9) * (0.6 + 0.4 * Math.sin(lt * 2.4 + i * 0.9));
+    g.fillStyle = `rgba(210,220,255,${0.55 - i * 0.011})`; g.fillRect(mx - w / 2 + Math.sin(lt * 1.5 + i) * (10 + i), y, w, 2 + i * 0.06); } });
+  g.strokeStyle = 'rgba(120,140,220,0.18)'; g.lineWidth = 2;
+  for (let k = 0; k < 8; k++) { const y = hy + 20 + k * k * 6; g.beginPath(); for (let x = 0; x <= W; x += 20) g.lineTo(x, y + Math.sin(x * 0.01 + lt * (1 + k * 0.2) + k) * (2 + k)); g.stroke(); }
+  for (let i = 0; i < 4; i++) { const st = 1.5 + i * 5.3, p = (lt - st) / 0.9; if (p < 0 || p > 1) continue;
+    const x0 = W * (0.15 + hash(i) * 0.6), y0 = H * (0.05 + hash(i + 9) * 0.2), x = x0 + p * 500, y = y0 + p * 220;
+    lighter(g, () => { const gr = g.createLinearGradient(x - 250, y - 110, x, y); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, `rgba(255,255,255,${1 - p})`);
+      g.strokeStyle = gr; g.lineWidth = 3; g.beginPath(); g.moveTo(x - 250, y - 110); g.lineTo(x, y); g.stroke(); add(g, G_WHITE, x, y, 30, 1 - p); }); }
+}
+
+// 6. SKY LANTERNS: warm lights rising into an indigo dusk.
+const LANTERNS = (() => { const r = rng(77); return Array.from({ length: 60 }, () => ({ x: r() * W, z: 0.3 + r() * 0.9, sp: 30 + r() * 40, ph: r() * 9, off: r() * (H + 300) })); })();
+function drawLanterns(g, lt, count, alphaMul = 1) {
+  if (count <= 0 || alphaMul <= 0) return;
+  const L = LANTERNS.slice(0, count).sort((a, b) => a.z - b.z);
+  for (const l of L) {
+    const y = H + 150 - wrap(l.off + lt * l.sp * l.z, H + 300), x = l.x + Math.sin(lt * 0.4 + l.ph) * 30 * l.z, s = 34 * l.z;
+    const fl = 0.8 + 0.2 * Math.sin(lt * 9 + l.ph * 7);
+    lighter(g, () => add(g, G_AMBER, x, y, s * 4.5, 0.45 * fl * alphaMul));
+    g.globalAlpha = alphaMul;
+    const gr = g.createLinearGradient(0, y - s, 0, y + s); gr.addColorStop(0, '#ffcf7a'); gr.addColorStop(1, '#ff7a2a');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(x - s * 0.7, y - s); g.lineTo(x + s * 0.7, y - s); g.lineTo(x + s * 0.5, y + s); g.lineTo(x - s * 0.5, y + s); g.closePath(); g.fill();
+    g.fillStyle = `rgba(255,255,220,${0.8 * fl})`; g.fillRect(x - s * 0.25, y + s * 0.6, s * 0.5, s * 0.3);
+    g.globalAlpha = 1;
+  }
+}
+function sLanterns(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#0a0828'], [0.55, '#3a1a5a'], [0.85, '#a4466a'], [1, '#e9845e']]); g.fillRect(0, 0, W, H);
+  lighter(g, () => { const r = rng(4); for (let i = 0; i < 120; i++) add(g, G_WHITE, r() * W, r() * H * 0.5, 4, 0.5 * Math.abs(Math.sin(lt + i))); });
+  g.globalAlpha = 0.9; g.drawImage(CITY_FAR, 0, H - 380); g.globalAlpha = 1;
+  drawLanterns(g, lt + 20, 60);
+  g.fillStyle = '#0a0612'; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 40) g.lineTo(x, H - 60 - Math.sin(x * 0.004) * 30 - Math.sin(x * 0.013) * 12); g.lineTo(W, H); g.fill();
+}
+
+// 7. CHORUS TWO: retro-wave. Striped sun, neon grid racing toward us, scanlines.
+function sRetro(g, t, lt, e, b) {
+  const hy = H * 0.6;
+  g.fillStyle = grad(g, 0, hy, [[0, '#0d0221'], [0.6, '#2b0548'], [1, '#6a0f6b']]); g.fillRect(0, 0, W, hy);
+  lighter(g, () => { const r = rng(6); for (let i = 0; i < 150; i++) add(g, G_WHITE, r() * W, r() * hy * 0.8, 3 + r() * 3, 0.6 * Math.abs(Math.sin(lt * 1.5 + i))); });
+  const sr = 280, sx = W / 2, sy = hy - 70;
+  lighter(g, () => { add(g, G_PINK, sx, sy, 800 + b * 120, 0.55); });
+  g.save(); g.beginPath(); g.arc(sx, sy, sr, 0, 7); g.clip();
+  g.fillStyle = grad(g, sy - sr, sy + sr, [[0, '#ffe66d'], [0.45, '#ff9a5a'], [1, '#ff2d95']]); g.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+  g.fillStyle = '#2b0548';
+  for (let i = 0; i < 9; i++) { const y = sy + 10 + i * 26 + wrap(lt * 20, 26), hgt = 2 + i * 1.6; g.fillRect(sx - sr, y, sr * 2, hgt); }
+  g.restore();
+  g.fillStyle = '#12021f'; g.strokeStyle = '#ff4fd8'; g.lineWidth = 3; g.shadowColor = '#ff4fd8'; g.shadowBlur = 20;
+  g.beginPath(); g.moveTo(0, hy); [[0, 0], [180, 120], [330, 40], [520, 200], [700, 60], [860, 0]].forEach(([x, y]) => g.lineTo(x, hy - y)); g.lineTo(860, hy); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(W, hy); [[0, 0], [160, 160], [340, 70], [480, 230], [640, 90], [820, 0]].forEach(([x, y]) => g.lineTo(W - x, hy - y)); g.lineTo(W - 820, hy); g.fill(); g.stroke();
+  g.shadowBlur = 0;
+  g.fillStyle = grad(g, hy, H, [[0, '#2a0440'], [1, '#07010f']]); g.fillRect(0, hy, W, H - hy);
+  g.save(); g.strokeStyle = '#ff3fd0'; g.shadowColor = '#ff3fd0'; g.shadowBlur = 12; g.lineWidth = 2;
+  const speed = lt * 1.2;
+  for (let i = 0; i < 18; i++) { const z = wrap(i - speed * 2, 18) / 18, y = hy + Math.pow(z, 2.4) * (H - hy); g.globalAlpha = 0.25 + z * 0.75; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  g.globalAlpha = 0.9;
+  for (let i = -24; i <= 24; i++) { g.beginPath(); g.moveTo(W / 2 + i * 18, hy); g.lineTo(W / 2 + i * 260, H); g.stroke(); }
+  g.restore();
+  g.fillStyle = 'rgba(0,0,0,0.18)'; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1.5);
+}
+
+// 8. BRIDGE: blue rain, one streetlamp, someone waiting under an umbrella.
+function sRain(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#05070c'], [0.7, '#141c2a'], [1, '#0a0d14']]); g.fillRect(0, 0, W, H);
+  g.globalAlpha = 0.5; g.drawImage(CITY_FAR, 0, H - 600); g.globalAlpha = 1;
+  const lx = W * 0.66, ly = H * 0.22, gy = H * 0.86;
+  g.fillStyle = '#020306'; g.fillRect(lx - 7, ly, 14, gy - ly); g.fillRect(lx - 60, ly - 6, 70, 12);
+  lighter(g, () => {
+    const cone = g.createLinearGradient(0, ly, 0, gy); cone.addColorStop(0, 'rgba(180,200,255,0.4)'); cone.addColorStop(1, 'rgba(180,200,255,0.03)');
+    g.fillStyle = cone; g.beginPath(); g.moveTo(lx - 55, ly + 6); g.lineTo(lx - 55 + 330, gy); g.lineTo(lx - 55 - 330, gy); g.fill();
+    add(g, G_BLUE, lx - 55, ly + 8, 220, 0.9); add(g, G_WHITE, lx - 55, ly + 8, 40, 1);
+    add(g, G_BLUE, lx - 55, gy + 30, 360, 0.3);
+  });
+  g.fillStyle = grad(g, gy, H, [[0, '#0e1420'], [1, '#04060a']]); g.fillRect(0, gy, W, H - gy);
+  const px = lx - 150, py = gy;
+  g.fillStyle = '#010204';
+  g.beginPath(); g.roundRect(px - 26, py - 190, 52, 150, 18); g.fill();
+  g.fillRect(px - 20, py - 50, 16, 50); g.fillRect(px + 4, py - 50, 16, 50);
+  g.beginPath(); g.arc(px, py - 210, 24, 0, 7); g.fill();
+  g.beginPath(); g.moveTo(px - 150, py - 250); g.quadraticCurveTo(px, py - 380, px + 150, py - 250); g.closePath(); g.fill();
+  g.fillRect(px - 2, py - 300, 4, 120);
+  const r = rng(31); g.lineWidth = 1.5;
+  for (let i = 0; i < 520; i++) { const x = r() * W, y = wrap(r() * H + lt * (1100 + r() * 400), H + 60) - 60, inL = Math.abs(x - (lx - 55)) < (y - ly) * 0.45 && y > ly;
+    g.strokeStyle = inL ? 'rgba(220,230,255,0.75)' : 'rgba(150,170,210,0.22)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 5, y + 36); g.stroke(); }
+  for (let i = 0; i < 16; i++) { const k = Math.floor(lt * 2 + i / 16 * 2), p = wrap(lt * 2 + i / 16 * 2, 1), x = hash(k * 13 + i) * W, y = gy + 10 + hash(k * 7 + i) * (H - gy - 20);
+    g.strokeStyle = `rgba(190,205,240,${0.4 * (1 - p)})`; g.beginPath(); g.ellipse(x, y, 8 + p * 60, (8 + p * 60) * 0.22, 0, 0, 7); g.stroke(); }
+}
+
+// 9. FINAL CHORUS: golden hour over a field, then fireworks of light at the peak.
+const GRASS = (() => { const r = rng(55); return Array.from({ length: 260 }, () => ({ x: r() * W, h: 60 + r() * 160, ph: r() * 6, w: 2 + r() * 3 })); })();
+function lerpC(a, b, p) { const A = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16)), B = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16)); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], p))).join(',')})`; }
+function sGolden(g, t, lt, e, b) {
+  const dusk = smooth(20, 50, lt);
+  g.fillStyle = grad(g, 0, H, [[0, lerpC('#ffb36b', '#3a1450', dusk)], [0.45, lerpC('#ff8a7a', '#b8406f', dusk)], [0.75, lerpC('#ffd28a', '#ff9a6a', dusk)], [1, '#ffe2a8']]);
+  g.fillRect(0, 0, W, H);
+  const sy = H * 0.62 + lt * 4;
+  lighter(g, () => { add(g, G_GOLD, W * 0.62, sy, 900, 0.8); add(g, G_WHITE, W * 0.62, sy, 260, 0.9); });
+  lighter(g, () => { g.save(); g.translate(W * 0.62, sy); g.rotate(-lt * 0.03);
+    for (let i = 0; i < 24; i++) { g.rotate(Math.PI / 12); g.fillStyle = `rgba(255,230,180,${0.03 + e * 0.05})`; g.beginPath(); g.moveTo(0, 0); g.lineTo(1600, -40); g.lineTo(1600, 40); g.fill(); }
+    g.restore(); });
+  drawLanterns(g, lt, Math.floor(lerp(0, 40, dusk)), dusk);
+  for (const ht of HITS) {
+    if (ht > t || ht < t - 2.2 || ht < 184 || ht > 214) continue; const age = t - ht, p = ease(age / 2.2);
+    const cx = W * (0.15 + hash(ht * 5) * 0.7), cy = H * (0.12 + hash(ht * 7) * 0.3), col = [G_PINK, G_GOLD, G_VIOLET, G_TEAL][Math.floor(hash(ht) * 4)];
+    lighter(g, () => { for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2, d = 260 * p, x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d + age * age * 30;
+      add(g, col, x, y, 22, (1 - p) * 0.9); add(g, G_WHITE, x, y, 6, (1 - p)); } });
+  }
+  g.fillStyle = '#2a0e1c'; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 30) g.lineTo(x, H - 110 - Math.sin(x * 0.003 + 1) * 30); g.lineTo(W, H); g.fill();
+  g.strokeStyle = '#2a0e1c'; g.lineCap = 'round';
+  for (const s of GRASS) { const sw = Math.sin(lt * 1.3 + s.ph + s.x * 0.003) * 18; g.lineWidth = s.w; g.beginPath(); g.moveTo(s.x, H); g.quadraticCurveTo(s.x + sw * 0.4, H - s.h * 0.5, s.x + sw, H - s.h - 60); g.stroke(); }
+  lighter(g, () => { const r = rng(91); for (let i = 0; i < 80; i++) { const x = wrap(r() * W + lt * (20 + r() * 30), W), y = wrap(r() * H - lt * (15 + r() * 25), H); add(g, G_WHITE, x, y, 5 + r() * 6, 0.6); } });
+}
+
+// 10. GOODBYE: dawn over the city, the local train pulls away.
+function sLeaving(g, t, lt, e, b) {
+  g.fillStyle = grad(g, 0, H, [[0, '#1b1640'], [0.5, '#6b3a78'], [0.78, '#f08a7e'], [1, '#ffd0a0']]); g.fillRect(0, 0, W, H);
+  lighter(g, () => add(g, G_GOLD, W * 0.5, H * 0.78, 900, 0.6));
+  g.drawImage(CITY_FAR, 0, H - 470); g.drawImage(CITY_NEAR, 0, H - 380);
+  const p = ease(lt / 16), y = H - 260, scale = 1 - p * 0.35, x0 = lerp(-400, W + 1700, p);
+  for (let c = 0; c < 6; c++) {
+    const cx = x0 - c * 300 * scale, cw = 285 * scale, ch = 66 * scale;
+    g.fillStyle = '#0a0612'; g.beginPath(); g.roundRect(cx, y, cw, ch, 12 * scale); g.fill();
+    lighter(g, () => { for (let w = 0; w < 9; w++) { const wx = cx + (16 + w * 29) * scale; g.globalAlpha = 0.9; g.fillStyle = '#ffcf8a'; g.fillRect(wx, y + 14 * scale, 18 * scale, 22 * scale); add(g, G_GOLD, wx + 9 * scale, y + 25 * scale, 34 * scale, 0.35); } });
+  }
+  g.globalAlpha = 1; g.fillStyle = '#07030d'; g.fillRect(0, H - 194, W, 16); for (let x = 30; x < W; x += 170) g.fillRect(x, H - 194, 14, 200);
+  const a = smooth(9, 11, lt);
+  if (a > 0) { g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.shadowColor = 'rgba(255,120,170,0.9)'; g.shadowBlur = 40; g.font = '700 170px Script'; g.fillStyle = '#fff1f6'; g.fillText('Choo Lo', W / 2, H * 0.36);
+    g.shadowBlur = 0; g.font = '300 32px Pop'; g.letterSpacing = '20px'; g.fillStyle = '#ffe3ec'; g.fillText('THE LOCAL TRAIN', W / 2 + 10, H * 0.36 + 120); g.restore(); }
+}
+
+// ---------- the running order ----------
+// trans: how this scene comes in. lyric: how lyrics look in this scene.
+const SCENES = [
+  { from: 0,     draw: sTitle,    lyric: 'cinema' },
+  { from: 13.5,  draw: sWindow,   lyric: 'cinema', trans: 'flash' },
+  { from: 37.6,  draw: sPlatform, lyric: 'cinema', trans: 'zoom' },
+  { from: 50.6,  draw: sSunset,   lyric: 'pop',    trans: 'flash', zoomBeat: true },
+  { from: 77,    draw: sSea,      lyric: 'cinema', trans: 'burn' },
+  { from: 99,    draw: sLanterns, lyric: 'cinema', trans: 'wipe' },
+  { from: 109.9, draw: sRetro,    lyric: 'neon',   trans: 'glitch', zoomBeat: true },
+  { from: 136.6, draw: sRain,     lyric: 'spaced', trans: 'zoom' },
+  { from: 162.2, draw: sGolden,   lyric: 'pop',    trans: 'flash', zoomBeat: true },
+  { from: 215.2, draw: sLeaving,  lyric: 'cinema', trans: 'burn', lyricY: H * 0.42 },
+];
+const TR = 1.1;
+const DUR = 233.6;
+
+// ---------- lyrics ----------
+const HOT = new Set(['choo', 'lo', 'dil', 'intezaar', 'nazron', 'beqaraar', 'pyaas', 'yunhi', 'aas', 'bebasi']);
+const clean = (w) => w.toLowerCase().replace(/[^a-z]/g, '');
+const STYLES = {
+  cinema: { font: (h) => h ? 'italic 112px Serif' : 'italic 96px Serif', y: H * 0.78 },
+  pop:    { font: (h) => h ? '700 150px Script' : '800 92px Pop', y: H * 0.3 },
+  neon:   { font: (h) => h ? '112px Neon' : '800 88px Pop', y: H * 0.3 },
+  spaced: { font: () => '300 62px Pop', y: H * 0.4 },
+};
+function drawLyrics(g, t, style, yOver) {
+  const S = { ...STYLES[style], y: yOver ?? STYLES[style].y };
+  for (const L of LYRICS) {
+    const life = t - L.start; if (life < -0.1 || t > L.end + 0.5) continue;
+    const outP = smooth(L.end, L.end + 0.5, t), words = L.text.split(/\s+/);
+    const per = Math.min(0.42, ((L.end - L.start) * 0.55) / words.length);
+    g.save(); g.textBaseline = 'middle';
+    if (style === 'spaced') g.letterSpacing = '16px';
+    const parts = words.map((w) => { const hot = HOT.has(clean(w)), font = S.font(hot), text = style === 'spaced' ? w.toUpperCase() : w; g.font = font; return { w: text, hot, font, width: g.measureText(text).width }; });
+    const sp = 30, total = parts.reduce((a, p) => a + p.width, 0) + sp * (parts.length - 1), k = Math.min(1, W * 0.86 / total);
+    g.translate(W / 2, S.y - outP * 40); g.scale(k, k);
+    let x = -total / 2;
+    parts.forEach((p, i) => {
+      const lp = (life - i * per) / 0.55, a = clamp(lp) * (1 - outP);
+      if (a > 0) {
+        g.font = p.font; g.globalAlpha = a; g.textAlign = 'center';
+        g.save(); g.translate(x + p.width / 2, 0);
+        if (style === 'pop') { const s = lerp(1.6, 1, easeBack(lp)); g.scale(s, s); g.rotate((1 - clamp(lp)) * (i % 2 ? 0.12 : -0.12)); }
+        else if (style === 'neon') g.translate(0, (1 - ease(lp)) * -60);
+        else { g.translate(0, (1 - ease(lp)) * 30); if (lp < 1) g.filter = `blur(${(1 - clamp(lp)) * 12}px)`; }
+        if (style === 'neon') {
+          const off = 3 + (1 - clamp(lp)) * 18;
+          g.globalCompositeOperation = 'lighter';
+          g.fillStyle = 'rgba(0,240,255,0.7)'; g.fillText(p.w, -off, 0);
+          g.fillStyle = 'rgba(255,40,180,0.7)'; g.fillText(p.w, off, 0);
+          g.globalCompositeOperation = 'source-over';
+          g.shadowColor = p.hot ? '#ff3fd0' : '#00e5ff'; g.shadowBlur = 30; g.fillStyle = '#fff'; g.fillText(p.w, 0, 0);
+        } else {
+          g.shadowColor = style === 'pop' ? 'rgba(90,0,50,0.6)' : 'rgba(255,110,170,0.9)';
+          g.shadowBlur = style === 'pop' ? 26 : 30; if (style === 'pop') g.shadowOffsetY = 6;
+          if (style === 'pop') { g.lineJoin = 'round'; g.lineWidth = 10; g.strokeStyle = 'rgba(70,0,40,0.55)'; g.strokeText(p.w, 0, 0); }
+          g.fillStyle = p.hot ? grad(g, -70, 70, style === 'pop' ? [[0, '#ffffff'], [1, '#ffd1e3']] : [[0, '#fff6d6'], [0.5, '#ffb6cf'], [1, '#ff5f9e']]) : '#fffafc';
+          g.fillText(p.w, 0, 0);
+          g.shadowBlur = 0; g.shadowOffsetY = 0; g.fillText(p.w, 0, 0);
+        }
+        g.restore();
+      }
+      x += p.width + sp;
+    });
+    g.restore();
+  }
+}
+
+// ---------- transitions ----------
+const A = buffer(), B = buffer(), ga = A.getContext('2d'), gb = B.getContext('2d');
+function renderScene(i, g, t) {
+  const s = SCENES[i], e = energy(t), b = bass(t);
+  g.save(); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none'; g.shadowBlur = 0;
+  if (s.zoomBeat) { const z = 1 + b * 0.025; g.translate(W / 2, H / 2); g.scale(z, z); g.translate(-W / 2, -H / 2); }
+  s.draw(g, t, t - s.from, e, b);
+  g.restore();
+}
+function composite(g, p, kind) {
+  // A holds the outgoing scene, B the incoming one. p goes 0 -> 1.
+  g.save();
+  if (kind === 'zoom') {
+    const za = 1 + ease(p) * 0.5, zb = 1.25 - ease(p) * 0.25;
+    g.translate(W / 2, H / 2); g.scale(za, za); g.translate(-W / 2, -H / 2); g.drawImage(A, 0, 0);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.translate(W / 2, H / 2); g.scale(zb, zb); g.translate(-W / 2, -H / 2);
+    g.globalAlpha = smooth(0.15, 0.85, p); g.drawImage(B, 0, 0);
+  } else if (kind === 'wipe') {
+    g.drawImage(A, 0, 0);
+    const x = lerp(-400, W + 400, ease(p));
+    g.save(); g.beginPath(); g.moveTo(x - 300, 0); g.lineTo(x + 300, H); g.lineTo(-800, H); g.lineTo(-800, 0); g.clip(); g.drawImage(B, 0, 0); g.restore();
+    g.globalCompositeOperation = 'lighter'; g.strokeStyle = 'rgba(255,220,200,0.9)'; g.lineWidth = 6; g.shadowColor = '#ff9ac0'; g.shadowBlur = 40;
+    g.beginPath(); g.moveTo(x - 300, 0); g.lineTo(x + 300, H); g.stroke();
+  } else if (kind === 'glitch') {
+    g.drawImage(p < 0.5 ? A : B, 0, 0);
+    const amt = Math.sin(p * Math.PI), fr = Math.floor(p * 12);
+    for (let i = 0; i < 14; i++) { const y = hash(i + fr * 31) * H, hh = 10 + hash(i * 3 + fr) * 80, dx = (hash(i * 7 + fr) - 0.5) * 300 * amt;
+      g.drawImage(hash(i + fr) < 0.5 ? A : B, 0, y, W, hh, dx, y, W, hh); }
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.35 * amt; g.drawImage(B, 14 * amt, 0);
+    g.globalAlpha = 0.25 * amt; g.fillStyle = '#ff2bd6'; g.fillRect(0, 0, W, H);
+  } else {
+    g.drawImage(A, 0, 0); g.globalAlpha = smooth(0.3, 0.7, p); g.drawImage(B, 0, 0);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'lighter';
+    const f = Math.sin(p * Math.PI);
+    if (kind === 'burn') {
+      g.globalAlpha = f * 0.9;
+      const gr = g.createRadialGradient(W * 0.85, H * 0.5, 0, W * 0.85, H * 0.5, W * 0.9);
+      gr.addColorStop(0, 'rgba(255,200,120,1)'); gr.addColorStop(0.4, 'rgba(255,90,40,0.7)'); gr.addColorStop(1, 'rgba(120,0,40,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    } else {
+      g.globalAlpha = f; g.drawImage(G_WHITE, -W * 0.5, -H * 0.5, W * 2, H * 2);
+      g.globalAlpha = f * 0.7; g.drawImage(G_PINK, -W * 0.2, -H * 0.6, W * 1.4, H * 2.2);
+    }
+  }
+  g.restore();
+}
+
+// ---------- overlays ----------
+function leaks(g, t, e) {
+  lighter(g, () => {
+    add(g, G_PINK, W * (0.1 + 0.15 * Math.sin(t * 0.13)), H * (0.1 + 0.1 * Math.cos(t * 0.17)), 900, 0.10 + e * 0.12);
+    add(g, G_GOLD, W * (0.9 - 0.12 * Math.sin(t * 0.11)), H * (0.95 - 0.1 * Math.sin(t * 0.19)), 800, 0.08 + e * 0.10);
+  });
+}
+function finish(g, t) {
+  g.save();
+  const v = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.05);
+  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(4,0,10,0.62)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  const k = Math.floor(t * 24), gx = Math.floor(hash(k) * 512), gy = Math.floor(hash(k + 99) * 512);
+  g.fillStyle = g.createPattern(GRAIN, 'repeat'); g.translate(-gx, -gy); g.fillRect(gx, gy, W, H); g.setTransform(1, 0, 0, 1, 0, 0);
+  const bar = 90 * Math.max(1 - smooth(11, 14, t), smooth(215, 217, t));
+  if (bar > 0) { g.fillStyle = '#000'; g.fillRect(0, 0, W, bar); g.fillRect(0, H - bar, W, bar); }
+  const fade = Math.min(smooth(0, 1.2, t), 1 - smooth(DUR - 2.2, DUR, t));
+  if (fade < 1) { g.fillStyle = `rgba(0,0,0,${1 - fade})`; g.fillRect(0, 0, W, H); }
+  g.restore();
 }
 
 // ---------- the frame ----------
-const DUR = 233.6;
 window.drawFrame = function (t) {
-  const e = energy(t), b = bass(t);
-  const [top, mid, bot] = sky(t);
-
-  // sky
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, rgb(top)); g.addColorStop(0.55, rgb(mid)); g.addColorStop(1, rgb(bot));
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-
-  // horizon glow that swells with the music
-  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25 + e * 0.35;
-  ctx.drawImage(GLOW_PINK, W / 2 - 1300, H - 500, 2600, 900);
-  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-
-  const dawn = smooth(218, 232, t);
-  drawStars(t, 1 - dawn * 0.8);
-  drawMoon(t);
-  drawBokeh(t, e, b);
-
-  // the city and the train in the foreground
-  ctx.globalAlpha = 0.95; ctx.drawImage(CITY, 0, H - 360); ctx.globalAlpha = 1;
-  drawTrain(t, 26, 16, 1);
-  drawTrain(t, 132, 14, -1);
-  drawTrain(t, 210, 15, 1);
-  drawBridge();
-
-  drawFireflies(t, e);
-  drawPetals(t, smooth(92, 102, t) * (0.5 + e * 0.6) * (1 - smooth(222, 230, t)));
-
-  // centre: heart and ring, which step back while a lyric is on screen
-  const lyricOn = drawLyricsPeek(t);
-  const centreA = (1 - lyricOn * 0.65) * smooth(13, 16, t) * (1 - smooth(219, 223, t));
-  const hy = H * 0.42 - lyricOn * 60;
-  drawRing(t, W / 2, hy, 200 - lyricOn * 50, centreA * smooth(22, 28, t));
-  drawHeart(t, W / 2, hy, 120 - lyricOn * 30, ease((t - 14) / 9), b, centreA);
-
-  drawTitle(t, 0, 13);
-  drawTitle(t, 223.5, DUR + 3);
-  drawLyrics(t);
-
-  // vignette and grain
-  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.0);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(5,0,12,0.65)');
-  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
-  const gx = Math.floor(rng(Math.floor(t * 24))() * 512), gy = Math.floor(rng(Math.floor(t * 24) + 99)() * 512);
-  ctx.fillStyle = ctx.createPattern(GRAIN, 'repeat'); ctx.save(); ctx.translate(-gx, -gy); ctx.fillRect(gx, gy, W, H); ctx.restore();
-
-  // fade in from black and out to black
-  const fade = Math.min(smooth(0, 1.5, t), 1 - smooth(DUR - 2.5, DUR, t));
-  if (fade < 1) { ctx.fillStyle = `rgba(0,0,0,${1 - fade})`; ctx.fillRect(0, 0, W, H); }
+  let i = 0; while (i < SCENES.length - 1 && t >= SCENES[i + 1].from) i++;
+  const next = SCENES[i + 1], into = t - SCENES[i].from, e = energy(t);
+  main.save();
+  if (i > 0 && into < TR / 2) { renderScene(i - 1, ga, t); renderScene(i, gb, t); composite(main, 0.5 + into / TR, SCENES[i].trans); }
+  else if (next && next.from - t < TR / 2) { renderScene(i, ga, t); renderScene(i + 1, gb, t); composite(main, 0.5 - (next.from - t) / TR, next.trans); }
+  else renderScene(i, main, t);
+  main.restore();
+  leaks(main, t, e);
+  if (SCENES[i].zoomBeat) { const h = hit(t); if (h > 0) lighter(main, () => { main.globalAlpha = h * 0.16; main.fillStyle = '#ffe6f0'; main.fillRect(0, 0, W, H); }); }
+  drawLyrics(main, t, SCENES[i].lyric, SCENES[i].lyricY);
+  finish(main, t);
 };
-function drawLyricsPeek(t) {
-  let a = 0;
-  for (const L of LYRICS) if (t > L.start - 0.6 && t < L.end + 0.5) a = Math.max(a, smooth(L.start - 0.6, L.start, t) * (1 - smooth(L.end, L.end + 0.5, t)));
-  return a;
-}
 
 // ---------- loading ----------
 function parseLRC(src) {
   const out = [];
-  for (const line of src.split(/\r?\n/)) {
-    const m = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/); if (!m) continue;
-    out.push({ start: +m[1] * 60 + +m[2], text: m[3].trim() });
-  }
+  for (const line of src.split(/\r?\n/)) { const m = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/); if (m) out.push({ start: +m[1] * 60 + +m[2], text: m[3].trim() }); }
   out.sort((a, b) => a.start - b.start);
   out.forEach((l, i) => { l.end = Math.min((out[i + 1]?.start ?? l.start + 6) - 0.5, l.start + 7); });
   return out.filter((l) => l.text);
@@ -369,11 +507,12 @@ function parseLRC(src) {
 window.ready = (async () => {
   AUDIO = await (await fetch('audio.json')).json();
   try { const r = await fetch('lyrics.lrc'); if (r.ok) LYRICS = parseLRC(await r.text()); } catch {}
-  await Promise.all(['700 150px Deva', '500 92px Deva', 'italic 120px Serif', '30px Inter'].map((f) => document.fonts.load(f, 'छू लो Choo Lo')));
+  for (let f = 1; f < AUDIO.bass.length - 1; f++) { const t = f / AUDIO.fps, h = hit(t);
+    if (h > 0.5 && h >= hit(t - 1 / 30) && h > hit(t + 1 / 30) && (!HITS.length || t - HITS[HITS.length - 1] > 0.9)) HITS.push(t); }
+  await Promise.all(['italic 96px Serif', '800 92px Pop', '300 34px Pop', '700 150px Script', '112px Neon', '30px Inter'].map((f) => document.fonts.load(f, 'Choo Lo abc')));
   return LYRICS.length;
 })();
 
-// live preview when opened in a browser: ?t=40 starts at 40 s
 if (!navigator.webdriver) {
   window.ready.then(() => {
     const t0 = +(new URLSearchParams(location.search).get('t') || 0), s = performance.now();
