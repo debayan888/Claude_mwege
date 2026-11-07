@@ -140,6 +140,7 @@ function sWindow(g, t, lt, e, b) {
   g.fillStyle = '#05040a';
   g.fillRect(0, 0, W, 70); g.fillRect(0, H - 110, W, 110); g.fillRect(0, 0, 90, H); g.fillRect(W - 90, 0, 90, H);
   g.strokeStyle = 'rgba(255,200,150,0.18)'; g.lineWidth = 3; g.beginPath(); g.roundRect(90, 70, W - 180, H - 180, 40); g.stroke();
+  actWindow(g, t, lt);
 }
 
 // 3. EMPTY PLATFORM AT NIGHT: lamps, rain in the light, a wet floor.
@@ -169,6 +170,7 @@ function sPlatform(g, t, lt, e, b) {
   for (let i = 0; i < 14; i++) { const k = Math.floor(lt * 1.6 + i / 14 * 1.6), p = wrap(lt * 1.6 + i / 14 * 1.6, 1);
     const x = hash(k * 31 + i) * W, y = hy + 60 + hash(k * 17 + i) * (H - hy - 60);
     g.strokeStyle = `rgba(200,210,255,${0.35 * (1 - p)})`; g.lineWidth = 1.5; g.beginPath(); g.ellipse(x, y, 10 + p * 70, (10 + p * 70) * 0.25, 0, 0, 7); g.stroke(); }
+  actPlatform(g, t, lt);
 }
 
 // heart-shaped bursts that fire on strong bass hits
@@ -203,6 +205,7 @@ function sSunset(g, t, lt, e, b) {
   for (let i = 0; i < 7; i++) { const x = wrap(-200 + lt * 70 + i * 90, W + 400) - 200, y = H * 0.3 + Math.sin(i * 2) * 60 + Math.sin(lt + i) * 10, f = Math.sin(lt * 8 + i) * 12;
     g.beginPath(); g.moveTo(x - 18, y - f); g.quadraticCurveTo(x - 8, y - 6, x, y); g.quadraticCurveTo(x + 8, y - 6, x + 18, y - f); g.stroke(); }
   burst(g, t, 51, 77);
+  actSunset(g, t, lt);
 }
 
 // 5. MOONLIT SEA: a giant moon, its path on the water, shooting stars.
@@ -223,6 +226,7 @@ function sSea(g, t, lt, e, b) {
     const x0 = W * (0.15 + hash(i) * 0.6), y0 = H * (0.05 + hash(i + 9) * 0.2), x = x0 + p * 500, y = y0 + p * 220;
     lighter(g, () => { const gr = g.createLinearGradient(x - 250, y - 110, x, y); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, `rgba(255,255,255,${1 - p})`);
       g.strokeStyle = gr; g.lineWidth = 3; g.beginPath(); g.moveTo(x - 250, y - 110); g.lineTo(x, y); g.stroke(); add(g, G_WHITE, x, y, 30, 1 - p); }); }
+  actSea(g, t, lt);
 }
 
 // 6. SKY LANTERNS: warm lights rising into an indigo dusk.
@@ -247,6 +251,7 @@ function sLanterns(g, t, lt, e, b) {
   g.globalAlpha = 0.9; g.drawImage(CITY_FAR, 0, H - 380); g.globalAlpha = 1;
   drawLanterns(g, lt + 20, 60);
   g.fillStyle = '#0a0612'; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 40) g.lineTo(x, H - 60 - Math.sin(x * 0.004) * 30 - Math.sin(x * 0.013) * 12); g.lineTo(W, H); g.fill();
+  actLanterns(g, t, lt);
 }
 
 // 7. CHORUS TWO: retro-wave. Striped sun, neon grid racing toward us, scanlines.
@@ -272,6 +277,7 @@ function sRetro(g, t, lt, e, b) {
   g.globalAlpha = 0.9;
   for (let i = -24; i <= 24; i++) { g.beginPath(); g.moveTo(W / 2 + i * 18, hy); g.lineTo(W / 2 + i * 260, H); g.stroke(); }
   g.restore();
+  actRetro(g, t, lt);
   g.fillStyle = 'rgba(0,0,0,0.18)'; for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 1.5);
 }
 
@@ -300,6 +306,7 @@ function sRain(g, t, lt, e, b) {
     g.strokeStyle = inL ? 'rgba(220,230,255,0.75)' : 'rgba(150,170,210,0.22)'; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 5, y + 36); g.stroke(); }
   for (let i = 0; i < 16; i++) { const k = Math.floor(lt * 2 + i / 16 * 2), p = wrap(lt * 2 + i / 16 * 2, 1), x = hash(k * 13 + i) * W, y = gy + 10 + hash(k * 7 + i) * (H - gy - 20);
     g.strokeStyle = `rgba(190,205,240,${0.4 * (1 - p)})`; g.beginPath(); g.ellipse(x, y, 8 + p * 60, (8 + p * 60) * 0.22, 0, 0, 7); g.stroke(); }
+  actRain(g, t, lt, px, py);
 }
 
 // 9. FINAL CHORUS: golden hour over a field, then fireworks of light at the peak.
@@ -322,6 +329,7 @@ function sGolden(g, t, lt, e, b) {
       add(g, col, x, y, 22, (1 - p) * 0.9); add(g, G_WHITE, x, y, 6, (1 - p)); } });
   }
   g.fillStyle = '#2a0e1c'; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 30) g.lineTo(x, H - 110 - Math.sin(x * 0.003 + 1) * 30); g.lineTo(W, H); g.fill();
+  actGolden(g, t, lt);
   g.strokeStyle = '#2a0e1c'; g.lineCap = 'round';
   for (const s of GRASS) { const sw = Math.sin(lt * 1.3 + s.ph + s.x * 0.003) * 18; g.lineWidth = s.w; g.beginPath(); g.moveTo(s.x, H); g.quadraticCurveTo(s.x + sw * 0.4, H - s.h * 0.5, s.x + sw, H - s.h - 60); g.stroke(); }
   lighter(g, () => { const r = rng(91); for (let i = 0; i < 80; i++) { const x = wrap(r() * W + lt * (20 + r() * 30), W), y = wrap(r() * H - lt * (15 + r() * 25), H); add(g, G_WHITE, x, y, 5 + r() * 6, 0.6); } });
@@ -339,10 +347,189 @@ function sLeaving(g, t, lt, e, b) {
     lighter(g, () => { for (let w = 0; w < 9; w++) { const wx = cx + (16 + w * 29) * scale; g.globalAlpha = 0.9; g.fillStyle = '#ffcf8a'; g.fillRect(wx, y + 14 * scale, 18 * scale, 22 * scale); add(g, G_GOLD, wx + 9 * scale, y + 25 * scale, 34 * scale, 0.35); } });
   }
   g.globalAlpha = 1; g.fillStyle = '#07030d'; g.fillRect(0, H - 194, W, 16); for (let x = 30; x < W; x += 170) g.fillRect(x, H - 194, 14, 200);
+  actLeaving(g, t, lt);
   const a = smooth(9, 11, lt);
   if (a > 0) { g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.shadowColor = 'rgba(255,120,170,0.9)'; g.shadowBlur = 40; g.font = '700 170px Script'; g.fillStyle = '#fff1f6'; g.fillText('Choo Lo', W / 2, H * 0.36);
     g.shadowBlur = 0; g.font = '300 32px Pop'; g.letterSpacing = '20px'; g.fillStyle = '#ffe3ec'; g.fillText('THE LOCAL TRAIN', W / 2 + 10, H * 0.36 + 120); g.restore(); }
+}
+
+// =====================================================================
+// THE COUPLE: a small stick-figure rig (side view) and their story.
+// Angles are radians from straight down; positive swings toward where
+// the figure faces (f = 1 faces right, -1 faces left).
+// =====================================================================
+const STICK = { torso: 58, neck: 8, head: 15, ua: 30, fa: 28, th: 36, sh: 36 };
+const POSE0 = { lean: 0, nod: 0, a1: 0.1, a2: 0.15, b1: -0.1, b2: 0.15, l1: 0.06, l2: 0, m1: -0.06, m2: 0 };
+const pose = (o) => ({ ...POSE0, ...o });
+function mixP(p, q, k) { k = clamp(k); const o = {}; for (const key in POSE0) o[key] = lerp(p[key], q[key], k); return o; }
+const STAND = pose({});
+const SIT_EDGE = pose({ l1: 1.5, l2: -1.4, m1: 1.4, m2: -1.2 });
+const SIT_GROUND = pose({ l1: 1.45, l2: -0.1, m1: 1.1, m2: -1.0, a1: 0.5, a2: 0.2, b1: -0.6, b2: 0 });
+const HUG = pose({ lean: 0.15, nod: 0.35, a1: 0.72, a2: 0.3, b1: 0.6, b2: 0.35 });
+function walkP(ph, run = false) {
+  const amp = run ? 0.7 : 0.45, s = Math.sin(ph), k = run ? 1.4 : 0.8;
+  return pose({ lean: run ? 0.22 : 0.04, l1: amp * s, l2: -Math.max(0, -Math.sin(ph - 0.9)) * k, m1: -amp * s, m2: -Math.max(0, Math.sin(ph - 0.9)) * k,
+    a1: -amp * 0.9 * s, a2: run ? 1.5 : 0.35, b1: amp * 0.9 * s, b2: run ? 1.5 : 0.35 });
+}
+function stick(g, x, y, s, f, P, o = {}) {
+  const S = STICK, dir = (a) => [f * Math.sin(a), Math.cos(a)];
+  const leg = (a1, a2) => S.th * Math.cos(a1) + S.sh * Math.cos(a1 + a2);
+  const hy = o.hip ? y : y - s * Math.max(leg(P.l1, P.l2), leg(P.m1, P.m2));
+  const hip = [x, hy], sh = [x + f * Math.sin(P.lean) * S.torso * s, hy - Math.cos(P.lean) * S.torso * s];
+  const hd = [sh[0] + f * Math.sin(P.lean + P.nod) * (S.neck + S.head) * s, sh[1] - Math.cos(P.lean + P.nod) * (S.neck + S.head) * s];
+  const limb = (o0, a1, a2, L1, L2) => { const d1 = dir(a1), j = [o0[0] + d1[0] * L1 * s, o0[1] + d1[1] * L1 * s], d2 = dir(a1 + a2); return [o0, j, [j[0] + d2[0] * L2 * s, j[1] + d2[1] * L2 * s]]; };
+  const armA = limb(sh, P.a1, P.a2, S.ua, S.fa), armB = limb(sh, P.b1, P.b2, S.ua, S.fa), legA = limb(hip, P.l1, P.l2, S.th, S.sh), legB = limb(hip, P.m1, P.m2, S.th, S.sh);
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round'; g.globalAlpha = o.alpha ?? 1;
+  const pass = (lw, c, blur, outline) => {
+    g.strokeStyle = c; g.fillStyle = c; g.lineWidth = lw * s; g.shadowColor = o.glow || 'rgba(0,0,0,0)'; g.shadowBlur = blur;
+    const pl = (pts) => { g.beginPath(); g.moveTo(...pts[0]); for (const p of pts.slice(1)) g.lineTo(...p); g.stroke(); };
+    pl(armB); pl(legB); pl([hip, sh]); pl(legA); pl(armA); pl([sh, [(sh[0] + hd[0]) / 2, (sh[1] + hd[1]) / 2]]);
+    if (o.girl) {
+      const wx = x + f * Math.sin(P.lean) * 16 * s, wy = hy - Math.cos(P.lean) * 16 * s, fl = 20 + Math.abs(P.l1 - P.m1) * 8;
+      g.beginPath(); g.moveTo(wx - 7 * s, wy); g.lineTo(wx + 7 * s, wy); g.lineTo(x + fl * s, hy + 26 * s); g.lineTo(x - fl * s, hy + 26 * s); g.closePath(); outline ? g.stroke() : g.fill();
+      const sw = Math.sin((o.t || 0) * 3) * 4;
+      g.beginPath(); g.moveTo(hd[0] - f * 8 * s, hd[1] - 10 * s); g.quadraticCurveTo(hd[0] - f * 32 * s, hd[1] - 4 * s + sw * s, hd[0] - f * 24 * s + sw * s, hd[1] + 24 * s); g.stroke();
+    }
+    g.beginPath(); g.arc(hd[0], hd[1], S.head * s, 0, 7); outline ? g.stroke() : g.fill();
+  };
+  if (o.outline) { pass(6, o.color, 26, true); g.shadowBlur = 0; pass(2, '#ffffff', 0, true); }
+  else pass(9, o.color || '#12051a', o.glow ? 26 : 0, false);
+  g.restore();
+  return { hip, sh, hd, handA: armA[2], handB: armB[2] };
+}
+// a little heart that pops out of a moment and floats up
+function heartPop(g, x, y, age, size = 40, col = '#ff4f8b') {
+  if (age < 0 || age > 2.2) return;
+  const sc = easeBack(age / 0.5) * size / 16, a = 1 - smooth(1.2, 2.2, age);
+  g.save(); g.translate(x + Math.sin(age * 3) * 10, y - age * 70); g.scale(sc, sc); g.globalAlpha = a;
+  g.shadowColor = col; g.shadowBlur = 30; g.fillStyle = col; g.beginPath();
+  for (let i = 0; i <= 60; i++) { const [hx, hy] = heartXY((i / 60) * Math.PI * 2); i ? g.lineTo(hx, hy) : g.moveTo(hx, hy); } g.fill();
+  g.restore();
+}
+function sparkleAt(g, x, y, age) {
+  if (age < 0 || age > 1.2) return; const p = ease(age / 1.2);
+  lighter(g, () => { add(g, G_WHITE, x, y, 60 + p * 100, (1 - p)); for (let i = 0; i < 12; i++) { const a = i / 12 * 6.283; add(g, G_PINK, x + Math.cos(a) * p * 120, y + Math.sin(a) * p * 120, 16, 1 - p); } });
+}
+
+// --- the story, scene by scene ---
+// on the train, she leans on the window with her music on
+function actWindow(g, t, lt) {
+  const nod = Math.sin(t * Math.PI * 2 * 1.2) * 0.04 + 0.25;
+  g.fillStyle = '#05030a'; g.beginPath(); g.roundRect(W * 0.02, H - 150, 460, 200, 20); g.fill();
+  stick(g, W * 0.12, H - 140, 3.2, 1, pose({ lean: 0.18, nod, l1: 1.5, l2: -1.2, m1: 1.4, m2: -1.3, a1: 0.9, a2: 1.3, b1: 0.6, b2: 1.0 }), { hip: true, girl: true, color: '#05030a', t });
+  // music notes drifting from her
+  lighter(g, () => { for (let i = 0; i < 4; i++) { const p = wrap(lt * 0.35 + i / 4, 1); g.globalAlpha = Math.sin(p * Math.PI) * 0.8; g.fillStyle = '#ffd6a8'; g.font = '44px Inter';
+    g.fillText(i % 2 ? '♪' : '♫', W * 0.2 + p * 160 + Math.sin(p * 9 + i) * 20, H - 520 - p * 260); } });
+}
+// he waits on the platform: checks his watch, taps his foot, looks around
+function actPlatform(g, t, lt) {
+  const x = W * 0.1, y = H * 0.93, s = 2.4;
+  let P = STAND, f = 1;
+  const watch = pose({ a1: 0.6, a2: 1.9, nod: 0.35 }), tap = (k) => pose({ l1: 0.06 + Math.max(0, Math.sin(k)) * 0.25, l2: -Math.max(0, Math.sin(k)) * 0.3 });
+  if (lt > 2.5 && lt < 5.5) P = mixP(STAND, watch, smooth(2.5, 3.1, lt) - smooth(4.9, 5.5, lt));
+  else if (lt >= 5.5 && lt < 8.5) P = tap(lt * 9);
+  else if (lt >= 8.5 && lt < 11) { f = lt < 9.7 ? -1 : 1; P = pose({ nod: -0.1 }); }
+  else if (lt >= 11) P = pose({ lean: -0.06, nod: 0.25, a1: 0.02, b1: -0.02 });
+  stick(g, x, y, s, f, P, { color: '#020208', glow: 'rgba(255,180,100,0.7)', t });
+}
+// they walk toward each other, touch hands on "choo lo", twirl, then hug
+function actSunset(g, t, lt) {
+  g.fillStyle = '#1a0820'; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += 40) g.lineTo(x, H * 0.935 - Math.sin(x * 0.003) * 14); g.lineTo(W, H); g.fill();
+  const cx = W / 2, gy = H * 0.94, s = 2.0, col = '#1a0820';
+  const wp = ease(lt / 3.6), bx = lerp(cx - 760, cx - 78, wp), gx = lerp(cx + 760, cx + 78, wp);
+  const REACH = pose({ a1: 0.66, a2: 0.1 }), TWIRL = pose({ a1: 2.7, a2: 0.1 });
+  let PB, PG, fG = -1, bxx = bx, gxx = gx;
+  if (lt < 3.6) { PB = walkP(lt * 7); PG = walkP(lt * 7 + 1); }
+  else if (lt < 13.5) { const k = smooth(3.8, 4.8, lt); PB = mixP(STAND, REACH, k); PG = mixP(STAND, REACH, k);
+    const sway = Math.sin(lt * 1.6) * 0.04; PB.lean += sway; PG.lean -= sway; }
+  else if (lt < 17.2) { PB = mixP(REACH, TWIRL, smooth(13.5, 14, lt)); PG = mixP(REACH, TWIRL, smooth(13.5, 14, lt)); fG = Math.floor((lt - 14) / 0.32) % 2 && lt > 14 && lt < 16.6 ? 1 : -1; }
+  else { const k = smooth(17.2, 18.6, lt); bxx = lerp(cx - 78, cx - 62, k); gxx = lerp(cx + 78, cx + 62, k); PB = mixP(TWIRL, HUG, k); PG = mixP(TWIRL, HUG, k); const sw = Math.sin(lt * 1.3) * 0.05; PB.lean += sw; PG.lean += sw; }
+  stick(g, bxx, gy, s, 1, PB, { color: col, t });
+  stick(g, gxx, gy, s, fG, PG, { color: col, girl: true, t });
+  sparkleAt(g, cx, gy - 205, lt - 4.6);
+  heartPop(g, cx, gy - 260, lt - 4.7, 46);
+  heartPop(g, cx - 30, gy - 330, lt - 18.6, 34, '#ff7aa8'); heartPop(g, cx + 30, gy - 340, lt - 19.4, 28, '#ffb3cf'); heartPop(g, cx, gy - 340, lt - 21, 40);
+}
+// sitting on the pier under the moon; he points at the shooting stars
+function actSea(g, t, lt) {
+  const py = H * 0.75, end = W * 0.42;
+  g.fillStyle = '#03040c'; g.fillRect(0, py, end, 22); for (let x = 30; x < end; x += 120) g.fillRect(x, py, 14, H - py);
+  const s = 1.45, gx = W * 0.27, bx = gx + 78 * s;
+  const swing = (k) => pose({ l1: 1.5, l2: -1.45 + Math.sin(lt * 1.4 + k) * 0.25, m1: 1.45, m2: -1.3 + Math.sin(lt * 1.4 + k + 2) * 0.25 });
+  const point = smooth(6.6, 7.2, lt) - smooth(9, 9.6, lt) + smooth(17.2, 17.8, lt) - smooth(19.6, 20.2, lt);
+  const PB = { ...swing(0), a1: lerp(0.3, 2.4, point), a2: lerp(0.6, 0.1, point), b1: -0.4, b2: 0.3, nod: lerp(0, -0.35, point) };
+  const PG = { ...swing(1), lean: 0.3, nod: 0.3, a1: 0.9, a2: 0.4, b1: 0.4, b2: 0.6 };
+  stick(g, gx, py, s, 1, PG, { hip: true, girl: true, color: '#03040c', t });
+  stick(g, bx, py, s, 1, PB, { hip: true, color: '#03040c', t });
+}
+// together they let a lantern go
+function actLanterns(g, t, lt) {
+  const ground = (x) => H - 60 - Math.sin(x * 0.004) * 30 - Math.sin(x * 0.013) * 12;
+  const s = 1.5, cx = W * 0.74, bx = cx - 40 * s, gx = cx + 40 * s;
+  const up = smooth(1.2, 2.2, lt) - smooth(4.2, 5.2, lt), hug = smooth(6, 7, lt);
+  const RAISE = pose({ a1: 2.5, a2: 0.15, b1: 2.3, b2: 0.2 }), base = mixP(STAND, HUG, hug);
+  const PB = mixP(base, RAISE, up), PG = mixP(base, RAISE, up);
+  const b = stick(g, lerp(bx, cx - 46, hug), ground(bx) + 4, s, 1, PB, { color: '#0a0612', t });
+  stick(g, lerp(gx, cx + 46, hug), ground(gx) + 4, s, -1, PG, { color: '#0a0612', girl: true, t });
+  // their lantern: held between them, then free
+  const free = Math.max(0, lt - 3.6), lx = cx + Math.sin(free * 0.8) * 20 * Math.min(1, free), ly = (b.handA[1] - 30) - free * free * 6 - free * 40;
+  if (lt > 0.8) { const sz = 40, fl = 0.85 + 0.15 * Math.sin(lt * 11);
+    g.globalAlpha = smooth(0.8, 1.4, lt);
+    lighter(g, () => add(g, G_AMBER, lx, ly, sz * 5, 0.6 * fl));
+    g.fillStyle = grad(g, ly - sz, ly + sz, [[0, '#ffe0a0'], [1, '#ff8a30']]); g.beginPath(); g.moveTo(lx - sz * 0.7, ly - sz); g.lineTo(lx + sz * 0.7, ly - sz); g.lineTo(lx + sz * 0.5, ly + sz); g.lineTo(lx - sz * 0.5, ly + sz); g.closePath(); g.fill();
+    g.globalAlpha = 1; }
+  heartPop(g, cx, ground(cx) - 300, lt - 7.2, 30);
+}
+// neon dancers on the grid, moving on the beat
+function actRetro(g, t, lt) {
+  const beat = t / (60 / 72), ph = beat * Math.PI, bounce = Math.abs(Math.sin(ph));
+  const s = 1.55, gy = H - 30, sec = Math.floor(lt / 6.6) % 4;
+  let PB, PG, fB = 1, fG = -1, bx = W / 2 - 110, gx = W / 2 + 110;
+  if (sec === 0) { PB = pose({ a1: 1.2 + Math.sin(ph) * 1.0, a2: 0.6, b1: 1.2 - Math.sin(ph) * 1.0, b2: 0.6, l1: 0.2, l2: -bounce * 0.5, m1: -0.2, m2: -bounce * 0.4 }); PG = { ...PB }; }
+  else if (sec === 1) { const sw = Math.sin(ph * 0.5) * 30; bx += sw; gx += sw; PB = pose({ a1: 0.8, a2: 0.2, lean: Math.sin(ph * 0.5) * 0.1, l2: -bounce * 0.3 }); PG = { ...PB }; }
+  else if (sec === 2) { PB = pose({ a1: 2.6, a2: 0.2, b1: 0.4, l2: -bounce * 0.3 }); PG = pose({ a1: 2.6, a2: 0.2, b1: 0.2 }); fG = Math.floor(beat) % 2 ? 1 : -1; gx = W / 2 + 60; }
+  else { fB = -1; fG = 1; PB = pose({ a1: 2.0 + Math.sin(ph) * 0.6, b1: 1.0, l1: 0.3 * Math.sin(ph), m1: -0.3 * Math.sin(ph), l2: -bounce * 0.5 }); PG = { ...PB, a1: 2.0 - Math.sin(ph) * 0.6 }; bx = W / 2 - 60; gx = W / 2 + 60; }
+  stick(g, bx, gy, s, fB, PB, { outline: true, color: '#00e5ff', glow: '#00e5ff', t });
+  stick(g, gx, gy, s, fG, PG, { outline: true, color: '#ff3fd0', glow: '#ff3fd0', girl: true, t });
+}
+// in the rain, a memory of her appears beside him and fades into light
+function actRain(g, t, lt, px, py) {
+  for (const [a, b] of [[1.5, 9.5], [14.5, 23]]) {
+    const life = lt - a, span = b - a; if (life < 0 || life > span + 1.5) continue;
+    const al = smooth(0, 1.2, life) * (1 - smooth(span - 1.5, span, life));
+    const reach = smooth(1, 3, life) - smooth(span - 2.5, span - 1.5, life);
+    if (al > 0) stick(g, px + 140, py, 1.75, -1, pose({ a1: lerp(0.1, 1.1, reach), a2: 0.15, nod: 0.1 }), { girl: true, outline: true, color: 'rgba(170,200,255,0.9)', glow: '#9fc0ff', alpha: al * 0.75, t });
+    const dp = (life - (span - 1.5)) / 1.5;
+    if (dp > 0 && dp < 1) lighter(g, () => { for (let i = 0; i < 40; i++) add(g, G_BLUE, px + 120 + hash(i) * 60, py - hash(i * 3) * 300 - dp * 160 * hash(i * 7), 10, (1 - dp) * 0.9); });
+  }
+}
+// they run to each other through the field, hug, sit, then watch the fireworks
+function actGolden(g, t, lt) {
+  const cx = W * 0.62, gy = H - 92, s = 2.0, col = '#2a0e1c';
+  let bx, gx, PB, PG, fB = 1, fG = -1, hip = false;
+  if (lt < 6) { const p = ease(lt / 6); bx = lerp(cx - 900, cx - 62, p); gx = lerp(cx + 900, cx + 62, p); PB = mixP(walkP(lt * 10, true), STAND, smooth(5.3, 6, lt)); PG = mixP(walkP(lt * 10 + 1.5, true), STAND, smooth(5.3, 6, lt)); }
+  else if (lt < 20) { bx = cx - 62; gx = cx + 62; PB = mixP(STAND, HUG, smooth(5.8, 6.6, lt)); PG = { ...PB }; const sw = Math.sin(lt * 1.2) * 0.06; PB.lean += sw; PG.lean += sw; }
+  else if (lt < 34) { const k = smooth(20, 21.5, lt); hip = k > 0.5; fG = 1; bx = cx + 30; gx = cx - 50;
+    PB = hip ? SIT_GROUND : STAND; PG = hip ? { ...SIT_GROUND, lean: 0.32, nod: 0.25 } : STAND; }
+  else { bx = cx - 70; gx = cx + 10; fG = 1; const pt = 0.5 + 0.5 * Math.sin(lt * 0.8);
+    PB = pose({ a1: 1.2, a2: 0.4, nod: -0.2 }); PG = pose({ a1: lerp(1.6, 2.6, pt), a2: 0.1, nod: -0.25, b1: 0.3 }); }
+  const yy = hip ? gy - 8 : gy;
+  // the fade between standing and sitting
+  const fadeSit = 1 - (smooth(19.6, 20.4, lt) - smooth(20.6, 21.4, lt)) * 0.9 - (smooth(33.4, 34, lt) - smooth(34, 34.6, lt)) * 0.9;
+  stick(g, bx, yy, s, fB, PB, { color: col, hip, alpha: fadeSit, t });
+  stick(g, gx, yy, s, fG, PG, { color: col, girl: true, hip, alpha: fadeSit, t });
+  sparkleAt(g, cx, gy - 250, lt - 6);
+  heartPop(g, cx, gy - 330, lt - 6.3, 50); heartPop(g, cx - 40, gy - 380, lt - 7, 30, '#ffb3cf'); heartPop(g, cx + 40, gy - 260, lt - 26, 32);
+}
+// she waves from the train window, he waves back from the bridge
+function actLeaving(g, t, lt) {
+  const p = ease(lt / 16), y = H - 260, scale = 1 - p * 0.35, x0 = lerp(-400, W + 1700, p);
+  const wx = x0 - 2 * 300 * scale + (16 + 4 * 29) * scale, wy = y + 14 * scale;
+  g.save(); g.beginPath(); g.rect(wx, wy, 18 * scale, 22 * scale); g.clip(); g.fillStyle = '#2a1020';
+  g.beginPath(); g.arc(wx + 9 * scale, wy + 10 * scale, 6 * scale, 0, 7); g.fill(); g.fillRect(wx + 3 * scale, wy + 15 * scale, 12 * scale, 10 * scale); g.restore();
+  const wave = 2.5 + Math.sin(lt * 7) * 0.35;
+  stick(g, W * 0.12, H - 194, 1.05, 1, pose({ a1: wave, a2: 0.2, nod: -0.15 }), { color: '#07030d', t });
 }
 
 // ---------- the running order ----------
@@ -351,15 +538,15 @@ const SCENES = [
   { from: 0,     draw: sTitle,    lyric: 'cinema' },
   { from: 13.5,  draw: sWindow,   lyric: 'cinema', trans: 'flash' },
   { from: 37.6,  draw: sPlatform, lyric: 'cinema', trans: 'zoom' },
-  { from: 50.6,  draw: sSunset,   lyric: 'pop',    trans: 'flash', zoomBeat: true },
-  { from: 77,    draw: sSea,      lyric: 'cinema', trans: 'burn' },
-  { from: 99,    draw: sLanterns, lyric: 'cinema', trans: 'wipe' },
+  { from: 50.6,  draw: sSunset,   lyric: 'pop',    trans: 'heart', zoomBeat: true },
+  { from: 77,    draw: sSea,      lyric: 'cinema', trans: 'wipe' },
+  { from: 99,    draw: sLanterns, lyric: 'cinema', trans: 'heart' },
   { from: 109.9, draw: sRetro,    lyric: 'neon',   trans: 'glitch', zoomBeat: true },
   { from: 136.6, draw: sRain,     lyric: 'spaced', trans: 'zoom' },
   { from: 162.2, draw: sGolden,   lyric: 'pop',    trans: 'flash', zoomBeat: true },
   { from: 215.2, draw: sLeaving,  lyric: 'cinema', trans: 'burn', lyricY: H * 0.42 },
 ];
-const TR = 1.1;
+const TR = 1.4;
 const DUR = 233.6;
 
 // ---------- lyrics ----------
@@ -437,6 +624,13 @@ function composite(g, p, kind) {
     g.save(); g.beginPath(); g.moveTo(x - 300, 0); g.lineTo(x + 300, H); g.lineTo(-800, H); g.lineTo(-800, 0); g.clip(); g.drawImage(B, 0, 0); g.restore();
     g.globalCompositeOperation = 'lighter'; g.strokeStyle = 'rgba(255,220,200,0.9)'; g.lineWidth = 6; g.shadowColor = '#ff9ac0'; g.shadowBlur = 40;
     g.beginPath(); g.moveTo(x - 300, 0); g.lineTo(x + 300, H); g.stroke();
+  } else if (kind === 'heart') {
+    g.drawImage(A, 0, 0);
+    const sc = Math.pow(ease(p), 1.6) * 90;
+    g.save(); g.translate(W / 2, H / 2 + 40); g.beginPath();
+    for (let i = 0; i <= 80; i++) { const [hx, hy] = heartXY((i / 80) * Math.PI * 2); i ? g.lineTo(hx * sc, hy * sc) : g.moveTo(hx * sc, hy * sc); }
+    g.closePath(); g.save(); g.clip(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(B, 0, 0); g.restore();
+    g.lineWidth = 6 / Math.max(sc, 0.01) * sc; g.strokeStyle = 'rgba(255,200,220,0.95)'; g.shadowColor = '#ff5f9e'; g.shadowBlur = 40; g.stroke(); g.restore();
   } else if (kind === 'glitch') {
     g.drawImage(p < 0.5 ? A : B, 0, 0);
     const amt = Math.sin(p * Math.PI), fr = Math.floor(p * 12);
