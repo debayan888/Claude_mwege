@@ -60,7 +60,7 @@ try {
       const { page, lyrics } = await openPage();
       if (w === 0) console.log(`${lyrics} lyric lines, ${frames} frames, ${workers} workers`);
       const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
-        '-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', String(fps), file], { stdio: ['pipe', 'inherit', 'inherit'] });
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '23', '-tune', 'grain', '-pix_fmt', 'yuv420p', '-r', String(fps), file], { stdio: ['pipe', 'inherit', 'inherit'] });
       for (let i = a; i < b; i++) {
         const buf = Buffer.from(await grab(page, from + i / fps), 'base64');
         if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r));

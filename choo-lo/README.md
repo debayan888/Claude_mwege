@@ -24,3 +24,19 @@ lyric is on screen.
 
 Open `index.html` through any local web server (with `?t=40` to start at 40 s)
 for a live preview.
+
+## Transcribe lyrics from a song
+
+Whisper on its own mishears singing over a band, so separate the vocals
+first with Demucs, then transcribe them with Whisper large-v3
+(faster-whisper). This runs on the CPU, with no API key.
+
+    python3 -m venv ~/lyrics-env
+    ~/lyrics-env/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+    ~/lyrics-env/bin/pip install demucs faster-whisper soundfile
+    ~/lyrics-env/bin/python -m demucs --two-stems=vocals -n htdemucs -o sep song.mp3
+    ~/lyrics-env/bin/python tools/transcribe.py sep/htdemucs/song/vocals.wav lyrics.lrc hi
+
+`transcribe.py` writes a timed `.lrc` file and a `.json` file with
+per-word times. Check it by ear: repeated choruses are often misheard
+differently each time.

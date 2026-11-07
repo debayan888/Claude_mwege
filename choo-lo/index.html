@@ -270,11 +270,11 @@ function drawLyrics(t) {
   let active = 0;
   for (let i = 0; i < LYRICS.length; i++) {
     const L = LYRICS[i], end = L.end, life = t - L.start;
-    if (life < -0.2 || t > end + 1.2) continue;
-    const outP = smooth(end, end + 1.2, t);
+    if (life < -0.2 || t > end + 0.5) continue;
+    const outP = smooth(end, end + 0.5, t);
     active = Math.max(active, 1 - outP);
     const words = L.text.split(/\s+/);
-    const font = hasDeva(L.text) ? '500 78px Deva' : 'italic 96px Serif';
+    const font = hasDeva(L.text) ? '500 92px Deva' : 'italic 96px Serif';
     ctx.save(); ctx.font = font; ctx.textBaseline = 'middle';
     const sp = ctx.measureText(' ').width, widths = words.map((w) => ctx.measureText(w).width);
     const total = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
@@ -351,7 +351,7 @@ window.drawFrame = function (t) {
 };
 function drawLyricsPeek(t) {
   let a = 0;
-  for (const L of LYRICS) if (t > L.start - 0.6 && t < L.end + 1.2) a = Math.max(a, smooth(L.start - 0.6, L.start, t) * (1 - smooth(L.end, L.end + 1.2, t)));
+  for (const L of LYRICS) if (t > L.start - 0.6 && t < L.end + 0.5) a = Math.max(a, smooth(L.start - 0.6, L.start, t) * (1 - smooth(L.end, L.end + 0.5, t)));
   return a;
 }
 
@@ -363,13 +363,13 @@ function parseLRC(src) {
     out.push({ start: +m[1] * 60 + +m[2], text: m[3].trim() });
   }
   out.sort((a, b) => a.start - b.start);
-  out.forEach((l, i) => { l.end = Math.min((out[i + 1]?.start ?? l.start + 6) - 0.4, l.start + 7); });
+  out.forEach((l, i) => { l.end = Math.min((out[i + 1]?.start ?? l.start + 6) - 0.5, l.start + 7); });
   return out.filter((l) => l.text);
 }
 window.ready = (async () => {
   AUDIO = await (await fetch('audio.json')).json();
   try { const r = await fetch('lyrics.lrc'); if (r.ok) LYRICS = parseLRC(await r.text()); } catch {}
-  await Promise.all(['700 150px Deva', '500 78px Deva', 'italic 120px Serif', '30px Inter'].map((f) => document.fonts.load(f, 'छू लो Choo Lo')));
+  await Promise.all(['700 150px Deva', '500 92px Deva', 'italic 120px Serif', '30px Inter'].map((f) => document.fonts.load(f, 'छू लो Choo Lo')));
   return LYRICS.length;
 })();
 
