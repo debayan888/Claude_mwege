@@ -1,0 +1,9 @@
+{
+  "title": "You woke up in 2100",
+  "theme": "midnight",
+  "size": "vertical",
+  "voice": "am_michael",
+  "pace": 1.05,
+  "music": false,
+  "captions": "auto"
+}
