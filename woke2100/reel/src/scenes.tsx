@@ -119,8 +119,16 @@ export const Wake: React.FC<SP> = ({lt, m, t}) => {
           <g transform="translate(300 760) rotate(-78)">
             <Person x={0} y={0} s={0.95} part="head" expr="sleepy" blink={1} />
           </g>
-          <path d="M 380 760 Q 700 700 1140 760 L 1140 1100 L 330 1100 Z" fill="#4a5fa8" />
-          <path d="M 380 760 Q 700 700 1140 760" stroke="#6d82cc" strokeWidth={18} fill="none" />
+          {/* shoulder in the grey hoodie and the red scarf, then the blanket over your body */}
+          <ellipse cx={410} cy={812} rx={80} ry={56} fill="#8e96a3" />
+          <path d="M 352 790 Q 380 830 420 812" stroke="#e63946" strokeWidth={20} fill="none" strokeLinecap="round" />
+          <path d={`M 440 ${770 + Math.sin(lt * 2) * 4} C 520 ${700 + Math.sin(lt * 2) * 6} 660 ${700 + Math.sin(lt * 2) * 6} 720 740 C 800 720 900 712 980 740 C 1040 720 1100 730 1140 760 L 1140 1100 L 400 1100 Z`} fill="#4a5fa8" />
+          <path d={`M 440 ${770 + Math.sin(lt * 2) * 4} C 520 ${700 + Math.sin(lt * 2) * 6} 660 ${700 + Math.sin(lt * 2) * 6} 720 740`} stroke="#6d82cc" strokeWidth={18} fill="none" strokeLinecap="round" />
+          <path d="M 760 800 Q 900 770 1080 800" stroke="#3b4d8f" strokeWidth={10} fill="none" />
+          {/* your arm resting on the blanket, hand near the phone */}
+          <line x1={470} y1={790} x2={600} y2={830} stroke="#8e96a3" strokeWidth={36} strokeLinecap="round" />
+          <line x1={600} y1={830} x2={690} y2={870} stroke="#8e96a3" strokeWidth={32} strokeLinecap="round" />
+          <circle cx={700} cy={874} r={19} fill="#f2c4a0" />
           {/* phone glowing on the bed */}
           <g transform="translate(760 860) rotate(-12)">
             <rect x={-46} y={-80} width={92} height={160} rx={16} fill="#111" />
@@ -130,8 +138,10 @@ export const Wake: React.FC<SP> = ({lt, m, t}) => {
           </g>
           {[0, 1, 2].map((i) => <Txt key={i} x={200 + i * 50} y={600 - ((lt * 70 + i * 50) % 170)} size={56 + i * 12} color="#b9c4ff" o={0.75}>z</Txt>)}
           <Txt x={540} y={1030} size={130} color="#fff" glow="#7a8cff">2025</Txt>
+
         </Cam>
         <LightLeak t={t} a={0.2} />
+        <div style={{position: 'absolute', top: 210, left: 60, right: 60, textAlign: 'center', fontFamily: MONT, fontWeight: 900, fontSize: 70, lineHeight: 1.1, color: '#ffe14d', WebkitTextStroke: '12px #000', paintOrder: 'stroke fill', scale: String(back(lt / 0.35))}}>WHAT IF YOU WOKE UP<br />75 YEARS LATER?</div>
       </AbsoluteFill>
     );
   }
@@ -165,17 +175,24 @@ export const PodScene: React.FC<SP> = ({lt, m, t}) => {
   const open = out((lt - 0.3) / 1.8);
   const sit = out((lt - 1.4) / 1.4);
   const heard = lt > m.voice;
+  const out1 = k(lt, 3.3, 3.45);
   return (
     <AbsoluteFill>
-      <Cam c={[540, lerp(700, 640, k(lt, 0, 6)), lerp(1.0, 1.18, k(lt, 0, 6))]}>
+      <Cam c={[540, lerp(700, 680, k(lt, 0, 6)), lerp(1.0, 1.1, k(lt, 0, 6))]}>
         <Lab t={t} />
         {/* other sleepers, still frozen, further back */}
         <Pod x={130} y={660} s={0.42} open={0} t={t} dim />
         <Pod x={950} y={660} s={0.42} open={0} t={t} dim />
-        <Person x={540} y={lerp(1060, 800, sit)} s={1.05} part="bust" expr={heard ? 'confused' : sit > 0.6 ? 'neutral' : 'sleepy'} blink={lt < 1.6 ? 1 : (lt % 2.7 < 0.12 ? 1 : 0)} turn={heard ? 0.7 : 0} look={heard ? [1, -0.2] : [0, 0]} armL={[0.5, 0.6]} armR={[0.4, 0.5]} tilt={heard ? 6 : 0} />
+        {out1 < 1 ? <g opacity={1 - out1}><Person x={540} y={lerp(1060, 800, sit) - out1 * 60} s={1.05} part="bust" extend={false} expr={sit > 0.6 ? 'neutral' : 'sleepy'} blink={lt < 1.6 ? 1 : undefined} armL={[0.5, 0.6]} armR={[0.4, 0.5]} /></g> : null}
         <Pod x={540} y={860} s={1.05} open={open} t={t} />
+        {/* climbs out and stands in front of the pod */}
+        {out1 > 0 ? <g opacity={out1}><Person x={500} y={lerp(560, 640, out(out1))} s={1.0} expr={heard ? 'confused' : 'neutral'} turn={heard ? 0.7 : 0} look={heard ? [1, -0.2] : [0, 0]} tilt={heard ? 6 : 0} armL={[0.2, 0.15]} armR={heard ? [0.5, -1.2] : [0.2, 0.15]} /></g> : null}
         <Mist lt={lt} x0={200} x1={880} y={820} from={m.fog - 0.4} />
-        <QMark x={800} y={540} p={(lt - m.voice) / 0.3} />
+        {/* a burst of mist as you climb out */}
+        <g style={{filter: 'blur(20px)'}} opacity={k(lt, 3.1, 3.3) * (1 - k(lt, 3.5, 4.2))}>
+          {[0, 1, 2, 3, 4].map((i) => <ellipse key={i} cx={360 + i * 90} cy={760 - (i % 2) * 60} rx={170} ry={120} fill="#eaf8ff" opacity={0.7} />)}
+        </g>
+        <QMark x={800} y={360} p={(lt - m.voice) / 0.3} />
       </Cam>
       <LightLeak t={t} a={0.25} />
     </AbsoluteFill>
@@ -207,8 +224,8 @@ export const RobotScene: React.FC<SP> = ({lt, m, t}) => {
     <AbsoluteFill>
       <Cam c={[540, 660, 1.05]}>
         <Lab t={t} />
-        <Person x={290} y={800} s={0.95} part="bust" expr={lt < m.years ? 'confused' : 'worried'} turn={0.6} look={[1, -0.3]} armL={[0.5, 0.6]} armR={[0.4, 0.5]} blink={lt % 3.1 < 0.12 ? 1 : 0} />
-        <Pod x={290} y={860} s={0.9} open={1} t={t} />
+        <Pod x={250} y={760} s={0.75} open={1} t={t} />
+        <Person x={290} y={660} s={0.92} expr={lt < m.years ? 'confused' : 'worried'} turn={0.6} look={[1, -0.3]} armL={[0.2, 0.15]} armR={lt < 4.1 ? [0.2, 0.15] : [0.6, -1.5]} />
         <Robot x={rx} y={430} s={0.95} t={t} mood={lt > 4.1 ? 'scan' : 'happy'} armL={k(lt, 1.3, 1.7) * (1 - k(lt, 3.4, 3.8)) * 2.4 + Math.sin(t * 9) * 0.25 * k(lt, 1.3, 1.7) * (1 - k(lt, 3.4, 3.8))} tilt={-6} />
         <g opacity={1 - k(lt, 3.9, 4.3)}><Bubble x={600} y={130} w={880} text="Welcome back, Sleeper #8214" p={(lt - 0.2) / 2.2} /></g>
         {holo > 0 ? (
@@ -286,7 +303,7 @@ export const PhoneScene: React.FC<SP> = ({lt, m, t}) => {
       <AbsoluteFill>
         <Cam c={[540, 660, 1.0]}>
           <Lab t={t} />
-          <Person x={540} y={560} s={1.25} part="bust" expr="worried" look={[0, 1]} tilt={-4} armL={[0.25 + pat, -0.9]} armR={[0.25 - pat, -0.9]} />
+          <Person x={540} y={600} s={1.0} expr="worried" look={[0, 1]} tilt={-4} armL={[0.2 + pat, -0.5]} armR={[0.2 - pat, -0.5]} />
           <QMark x={260} y={300} p={(lt - 0.5) / 0.3} />
           <QMark x={840} y={260} p={(lt - 0.9) / 0.3} c="#7df9ff" />
         </Cam>
@@ -407,7 +424,7 @@ export const FoodScene: React.FC<SP> = ({lt, m, t}) => {
 // =====================================================================
 // 7. NEWS: you are on the giant hologram, everyone stares
 // =====================================================================
-const CROWD = [KID_B, KID_A, {...HERO_P, hair: '#8a5a2b', hairHi: '#b07a45', top: '#c74a6a', topShade: '#a33a57', skin: '#e8b48f', scarf: undefined}, {...KID_A, visor: undefined, top: '#2f8f6f', topShade: '#22725a'}, {...KID_B, visor: undefined, top: '#d98b2b', topShade: '#b8701c', hair: '#2a1a12', hairHi: '#4a3020'}];
+const CROWD = [KID_B, KID_A, {...HERO_P, hair: '#8a5a2b', hairHi: '#b07a45', top: '#e8ecf4', topShade: '#c3cad8', skin: '#e8b48f', scarf: undefined, outfit: 'future' as const, accent: '#ff7ab6'}, {...KID_A, visor: undefined, top: '#1f2a44', topShade: '#151d33', accent: '#7df9ff'}, {...KID_B, visor: undefined, top: '#3a1f5c', topShade: '#2a1645', hair: '#2a1a12', hairHi: '#4a3020', accent: '#ffd166'}];
 export const NewsScene: React.FC<SP> = ({lt, m, t}) => {
   const on = k(lt, 0.2, 0.7);
   if (lt > m.stare - 0.15) {

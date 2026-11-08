@@ -2,13 +2,14 @@
 // built from the same template, and the robot. Everything is drawn in a local
 // space where (0, 0) is the base of the neck and 1 unit is 1 px at s = 1.
 import React from 'react';
+import {useCurrentFrame, useVideoConfig} from 'remotion';
 
 export type Expr = 'neutral' | 'sleepy' | 'shock' | 'scared' | 'confused' | 'smile' | 'wonder' | 'worried' | 'laugh';
-export type Palette = {skin: string; skinShade: string; hair: string; hairHi: string; top: string; topShade: string; legs: string; iris: string; scarf?: string; visor?: string};
+export type Palette = {skin: string; skinShade: string; hair: string; hairHi: string; top: string; topShade: string; legs: string; iris: string; scarf?: string; visor?: string; outfit?: 'hoodie' | 'future'; accent?: string};
 
 export const HERO_P: Palette = {skin: '#f2c4a0', skinShade: '#dba27f', hair: '#3a2417', hairHi: '#5c3a25', top: '#8e96a3', topShade: '#727a87', legs: '#2f3f63', iris: '#6b4226', scarf: '#e63946'};
-export const KID_A: Palette = {skin: '#c98f6b', skinShade: '#ad7553', hair: '#1d1b2e', hairHi: '#3a3760', top: '#7c5cff', topShade: '#5f43d6', legs: '#2a2650', iris: '#3a2a1c', visor: '#38e8ff'};
-export const KID_B: Palette = {skin: '#f6d3b8', skinShade: '#e0b090', hair: '#e8a33d', hairHi: '#f6c46a', top: '#16c7a5', topShade: '#0f9e83', legs: '#203a4a', iris: '#2b5d8a', visor: '#ff7ab6'};
+export const KID_A: Palette = {skin: '#c98f6b', skinShade: '#ad7553', hair: '#1d1b2e', hairHi: '#3a3760', top: '#7c5cff', topShade: '#5f43d6', legs: '#2a2650', iris: '#3a2a1c', visor: '#38e8ff', outfit: 'future', accent: '#38e8ff'};
+export const KID_B: Palette = {skin: '#f6d3b8', skinShade: '#e0b090', hair: '#e8a33d', hairHi: '#f6c46a', top: '#16c7a5', topShade: '#0f9e83', legs: '#203a4a', iris: '#2b5d8a', visor: '#ff7ab6', outfit: 'future', accent: '#ff7ab6'};
 
 export type PersonProps = {
   x: number; y: number; s: number;
@@ -25,6 +26,7 @@ export type PersonProps = {
   bob?: number; // body bob in px
   hair?: 'messy' | 'bun' | 'short';
   rim?: string; // rim-light colour
+  extend?: boolean; // bust: carry the body on below the frame
 };
 
 const BROWS: Record<Expr, [number, number]> = {neutral: [0, 0], sleepy: [2, 0], shock: [-14, 0], scared: [-8, 0.35], confused: [-10, -0.3], smile: [-3, 0], wonder: [-12, 0], worried: [-6, 0.3], laugh: [-5, 0]};
@@ -130,8 +132,21 @@ function armPts(side: number, a1: number, a2: number): [number, number][] {
   return [sh, e, w];
 }
 
-export const Person: React.FC<PersonProps> = (props) => {
-  const {x, y, s, p = HERO_P, view = 'front', part = 'full', tilt = 0, armL = [0.18, 0.1], armR = [0.18, 0.1], bob = 0, rim} = props;
+export const Person: React.FC<PersonProps> = (props0) => {
+  const frame = useCurrentFrame();
+  const {fps} = useVideoConfig();
+  const tt = frame / fps;
+  // alive when idle: a blink every few seconds and a gentle breath
+  const seed = (props0.x * 7.3 + props0.y * 1.7) % 3.1;
+  const autoBlink = (tt + seed) % 3.4 < 0.13 ? 1 : 0;
+  const props = {...props0, blink: props0.blink ?? (props0.expr === 'sleepy' ? undefined : autoBlink)};
+  const {x, y, s, p = HERO_P, view = 'front', part = 'full', tilt = 0, rim, extend = true} = props;
+  const hang = part === 'bust' && extend;
+  const armL = hang ? [0.1, 0.06] as [number, number] : props.armL ?? [0.18, 0.1];
+  const armR = hang ? [0.1, 0.06] as [number, number] : props.armR ?? [0.18, 0.1];
+  const bob = (props.bob ?? 0) + Math.sin(tt * 2.1 + seed) * 2.2;
+  const fut = p.outfit === 'future';
+  const acc = p.accent ?? '#38e8ff';
   const arms = ([[-1, armL], [1, armR]] as const).map(([sd, a]) => [sd, armPts(sd, a[0], a[1])] as const);
   const limb = (pts: [number, number][], w1: number, w2: number, col: string) => (
     <g>
@@ -141,6 +156,7 @@ export const Person: React.FC<PersonProps> = (props) => {
   );
   const hands = arms.map(([sd, pts]) => (
     <g key={`h${sd}`}>
+      {p.outfit === 'future' ? <circle cx={pts[2][0] - (pts[2][0] - pts[1][0]) * 0.22} cy={pts[2][1] - (pts[2][1] - pts[1][1]) * 0.22} r={19} fill={p.accent ?? '#38e8ff'} opacity={0.9} /> : null}
       <circle cx={pts[2][0]} cy={pts[2][1]} r={19} fill={p.skin} />
       <ellipse cx={pts[2][0] - sd * 14} cy={pts[2][1] - 6} rx={7} ry={11} fill={p.skin} transform={`rotate(${sd * 30} ${pts[2][0] - sd * 14} ${pts[2][1] - 6})`} />
     </g>
@@ -152,18 +168,49 @@ export const Person: React.FC<PersonProps> = (props) => {
           <ellipse cx={0} cy={470} rx={120} ry={18} fill="#000" opacity={0.25} />
           <path d="M -64 225 L -60 452 L -10 452 L -4 260 L 4 260 L 10 452 L 60 452 L 64 225 Z" fill={p.legs} />
           <path d="M 4 260 L 10 452 L 30 452 L 26 262 Z" fill="#000" opacity={0.12} />
-          <ellipse cx={-36} cy={458} rx={34} ry={14} fill="#f2f2f2" />
-          <ellipse cx={36} cy={458} rx={34} ry={14} fill="#f2f2f2" />
+          {fut ? (
+            <g>
+              <rect x={-56} y={330} width={40} height={8} rx={4} fill={acc} />
+              <rect x={16} y={330} width={40} height={8} rx={4} fill={acc} />
+              <rect x={-74} y={410} width={68} height={56} rx={18} fill="#1b1f2e" />
+              <rect x={6} y={410} width={68} height={56} rx={18} fill="#1b1f2e" />
+              <rect x={-70} y={452} width={60} height={6} rx={3} fill={acc} opacity={0.8} />
+              <rect x={10} y={452} width={60} height={6} rx={3} fill={acc} opacity={0.8} />
+            </g>
+          ) : (
+            <g>
+              <ellipse cx={-36} cy={458} rx={34} ry={14} fill="#f2f2f2" />
+              <ellipse cx={36} cy={458} rx={34} ry={14} fill="#f2f2f2" />
+            </g>
+          )}
         </g>
       ) : null}
       {part !== 'head' ? (
         <g>
           {/* arms behind for the back view */}
           {view === 'back' ? arms.map(([sd, pts]) => <g key={sd}>{limb(pts, 40, 34, p.topShade)}</g>) : null}
+          {part === 'bust' && extend ? (
+            <g>
+              <rect x={-64} y={220} width={60} height={1600} fill={p.legs} />
+              <rect x={4} y={220} width={60} height={1600} fill={p.legs} />
+              <rect x={24} y={240} width={40} height={1600} fill="#000" opacity={0.12} />
+            </g>
+          ) : null}
           {/* hoodie */}
           <path d="M -82 6 C -98 40 -92 150 -76 236 L 76 236 C 92 150 98 40 82 6 C 50 -14 -50 -14 -82 6 Z" fill={p.top} />
           <path d="M 30 0 C 70 0 92 40 86 120 C 84 170 80 210 76 236 L 40 236 C 60 160 62 60 30 0 Z" fill={p.topShade} opacity={0.6} />
-          {view === 'front' ? (
+          {fut ? (
+            <g>
+              <rect x={-34} y={-22} width={68} height={34} rx={14} fill={p.topShade} />
+              <ellipse cx={-80} cy={16} rx={32} ry={22} fill={p.topShade} />
+              <ellipse cx={80} cy={16} rx={32} ry={22} fill={p.topShade} />
+              <g style={{filter: `drop-shadow(0 0 6px ${acc})`}}>
+                <line x1={0} y1={12} x2={0} y2={194} stroke={acc} strokeWidth={5} />
+                <path d="M -62 62 L 0 100 L 62 62" stroke={acc} strokeWidth={5} fill="none" />
+                <rect x={-74} y={196} width={148} height={14} rx={7} fill={acc} opacity={0.85} />
+              </g>
+            </g>
+          ) : view === 'front' ? (
             <g>
               <path d="M -46 -6 Q 0 34 46 -6" stroke={p.topShade} strokeWidth={14} fill="none" strokeLinecap="round" />
               <line x1={-14} y1={20} x2={-16} y2={74} stroke="#e8eaee" strokeWidth={4} strokeLinecap="round" />

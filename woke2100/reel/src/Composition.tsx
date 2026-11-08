@@ -30,6 +30,19 @@ const Cuts: React.FC = () => {
   return a > 0 ? <AbsoluteFill style={{background: '#e9fbff', opacity: a * 0.55, mixBlendMode: 'screen'}} /> : null;
 };
 
+// series badge, so viewers know there are more episodes
+const Badge: React.FC = () => {
+  const t = useT();
+  const cta = SCENES.find((s) => s.id === 'cta')!.start;
+  const a = k(t, 3.2, 3.6) * (1 - k(t, 11.6, 12.1)) + k(t, cta + 0.2, cta + 0.6);
+  if (a <= 0) return null;
+  return (
+    <div style={{position: 'absolute', top: 150, left: 0, right: 0, display: 'flex', justifyContent: 'center', opacity: a}}>
+      <div style={{fontFamily: 'Montserrat', fontWeight: 900, fontSize: 32, letterSpacing: 2, color: '#fff', background: 'rgba(10,14,30,0.6)', border: '2px solid #3df0ff', borderRadius: 999, padding: '10px 28px'}}>YOU WOKE UP IN 2100 · <span style={{color: '#3df0ff'}}>EP 1</span></div>
+    </div>
+  );
+};
+
 export const Reel: React.FC = () => {
   const {fps} = useVideoConfig();
   return (
@@ -42,6 +55,7 @@ export const Reel: React.FC = () => {
       <Vignette />
       <Grain />
       <Cuts />
+      <Badge />
       <Captions hide={(t) => t > SCENES.find((s) => s.id === 'cta')!.start} />
       <Audio src={staticFile('soundtrack.wav')} />
     </AbsoluteFill>
