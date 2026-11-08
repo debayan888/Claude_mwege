@@ -26,7 +26,8 @@ export type PersonProps = {
   bob?: number; // body bob in px
   hair?: 'messy' | 'bun' | 'short';
   rim?: string; // rim-light colour
-  extend?: boolean; // bust: carry the body on below the frame
+  extend?: boolean; // bust: false keeps the cut at the waist (inside the pod)
+  walk?: number; // walk-cycle phase in radians; legs and arms move when set
 };
 
 const BROWS: Record<Expr, [number, number]> = {neutral: [0, 0], sleepy: [2, 0], shock: [-14, 0], scared: [-8, 0.35], confused: [-10, -0.3], smile: [-3, 0], wonder: [-12, 0], worried: [-6, 0.3], laugh: [-5, 0]};
@@ -140,11 +141,15 @@ export const Person: React.FC<PersonProps> = (props0) => {
   const seed = (props0.x * 7.3 + props0.y * 1.7) % 3.1;
   const autoBlink = (tt + seed) % 3.4 < 0.13 ? 1 : 0;
   const props = {...props0, blink: props0.blink ?? (props0.expr === 'sleepy' ? undefined : autoBlink)};
-  const {x, y, s, p = HERO_P, view = 'front', part = 'full', tilt = 0, rim, extend = true} = props;
-  const hang = part === 'bust' && extend;
-  const armL = hang ? [0.1, 0.06] as [number, number] : props.armL ?? [0.18, 0.1];
-  const armR = hang ? [0.1, 0.06] as [number, number] : props.armR ?? [0.18, 0.1];
-  const bob = (props.bob ?? 0) + Math.sin(tt * 2.1 + seed) * 2.2;
+  const {x, y, s, p = HERO_P, view = 'front', tilt = 0, rim, extend = true, walk} = props;
+  // a close-up is the whole, correctly proportioned body, cropped by the frame
+  const part = props.part === 'bust' && extend ? 'full' : props.part ?? 'full';
+  // front-view walk: knees lift in turn, arms swing against the legs
+  const w = walk ?? 0, walking = walk !== undefined;
+  const liftL = walking ? Math.max(0, Math.sin(w)) : 0, liftR = walking ? Math.max(0, -Math.sin(w)) : 0;
+  const armL = walking ? [0.14 + Math.sin(w) * 0.16, 0.25 + liftR * 0.3] as [number, number] : props.armL ?? [0.18, 0.1];
+  const armR = walking ? [0.14 - Math.sin(w) * 0.16, 0.25 + liftL * 0.3] as [number, number] : props.armR ?? [0.18, 0.1];
+  const bob = (props.bob ?? 0) + Math.sin(tt * 2.1 + seed) * 2.2 - (walking ? Math.abs(Math.sin(w)) * 6 : 0);
   const fut = p.outfit === 'future';
   const acc = p.accent ?? '#38e8ff';
   const arms = ([[-1, armL], [1, armR]] as const).map(([sd, a]) => [sd, armPts(sd, a[0], a[1])] as const);
@@ -166,36 +171,37 @@ export const Person: React.FC<PersonProps> = (props0) => {
       {part === 'full' ? (
         <g>
           <ellipse cx={0} cy={470} rx={120} ry={18} fill="#000" opacity={0.25} />
-          <path d="M -64 225 L -60 452 L -10 452 L -4 260 L 4 260 L 10 452 L 60 452 L 64 225 Z" fill={p.legs} />
-          <path d="M 4 260 L 10 452 L 30 452 L 26 262 Z" fill="#000" opacity={0.12} />
-          {fut ? (
-            <g>
-              <rect x={-56} y={330} width={40} height={8} rx={4} fill={acc} />
-              <rect x={16} y={330} width={40} height={8} rx={4} fill={acc} />
-              <rect x={-74} y={410} width={68} height={56} rx={18} fill="#1b1f2e" />
-              <rect x={6} y={410} width={68} height={56} rx={18} fill="#1b1f2e" />
-              <rect x={-70} y={452} width={60} height={6} rx={3} fill={acc} opacity={0.8} />
-              <rect x={10} y={452} width={60} height={6} rx={3} fill={acc} opacity={0.8} />
-            </g>
-          ) : (
-            <g>
-              <ellipse cx={-36} cy={458} rx={34} ry={14} fill="#f2f2f2" />
-              <ellipse cx={36} cy={458} rx={34} ry={14} fill="#f2f2f2" />
-            </g>
-          )}
+          {/* pelvis, then each leg from hip to knee to ankle */}
+          <rect x={-66} y={214} width={132} height={52} rx={22} fill={p.legs} />
+          {([[-1, liftL], [1, liftR]] as const).map(([sd, lift]) => {
+            const hx = sd * 34, hy = 240;
+            const kx = sd * 36, ky = 345 - lift * 22, ax = sd * 38, ay = 448 - lift * 46;
+            return (
+              <g key={sd}>
+                <line x1={hx} y1={hy} x2={kx} y2={ky} stroke={p.legs} strokeWidth={56} strokeLinecap="round" />
+                <line x1={kx} y1={ky} x2={ax} y2={ay} stroke={p.legs} strokeWidth={50} strokeLinecap="round" />
+                {sd > 0 ? <line x1={kx + 14} y1={ky} x2={ax + 14} y2={ay} stroke="#000" strokeWidth={14} opacity={0.12} strokeLinecap="round" /> : null}
+                {fut ? (
+                  <g>
+                    <rect x={kx - 22} y={ky - 4} width={44} height={8} rx={4} fill={acc} />
+                    <rect x={ax - 34} y={ay - 30} width={68} height={50} rx={18} fill="#1b1f2e" />
+                    <rect x={ax - 30} y={ay + 12} width={60} height={6} rx={3} fill={acc} opacity={0.8} />
+                  </g>
+                ) : (
+                  <g>
+                    <path d={`M ${ax - 32} ${ay + 12} Q ${ax - 34} ${ay - 12} ${ax - 6} ${ay - 12} L ${ax + 14} ${ay - 12} Q ${ax + 36} ${ay - 6} ${ax + 34} ${ay + 12} Z`} fill="#f4f4f4" />
+                    <rect x={ax - 33} y={ay + 8} width={67} height={8} rx={4} fill="#c9ced8" />
+                  </g>
+                )}
+              </g>
+            );
+          })}
         </g>
       ) : null}
       {part !== 'head' ? (
         <g>
           {/* arms behind for the back view */}
           {view === 'back' ? arms.map(([sd, pts]) => <g key={sd}>{limb(pts, 40, 34, p.topShade)}</g>) : null}
-          {part === 'bust' && extend ? (
-            <g>
-              <rect x={-64} y={220} width={60} height={1600} fill={p.legs} />
-              <rect x={4} y={220} width={60} height={1600} fill={p.legs} />
-              <rect x={24} y={240} width={40} height={1600} fill="#000" opacity={0.12} />
-            </g>
-          ) : null}
           {/* hoodie */}
           <path d="M -82 6 C -98 40 -92 150 -76 236 L 76 236 C 92 150 98 40 82 6 C 50 -14 -50 -14 -82 6 Z" fill={p.top} />
           <path d="M 30 0 C 70 0 92 40 86 120 C 84 170 80 210 76 236 L 40 236 C 60 160 62 60 30 0 Z" fill={p.topShade} opacity={0.6} />

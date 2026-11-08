@@ -265,7 +265,7 @@ export const WindowScene: React.FC<SP> = ({lt, m, t}) => {
         <rect x={-800} y={1040} width={2700} height={1200} fill="#0d1224" />
         <ellipse cx={540} cy={1040} rx={500} ry={30} fill="#ffb36b" opacity={0.18} />
         {/* you, from behind, lit by the sunrise */}
-        <Person x={lerp(140, 470, walkIn)} y={lerp(720, 600, walkIn)} s={lerp(0.85, 0.95, walkIn)} view="back" rim="#ffb36b" armL={[0.15 + (walkIn < 1 ? Math.sin(lt * 8) * 0.2 : 0), 0.1]} armR={[0.15 - (walkIn < 1 ? Math.sin(lt * 8) * 0.2 : 0), 0.1]} />
+        <Person x={lerp(140, 470, walkIn)} y={lerp(720, 600, walkIn)} s={lerp(0.85, 0.95, walkIn)} view="back" rim="#ffb36b" walk={walkIn < 0.97 ? lt * 9 : undefined} />
         {lt > m.fly ? <Txt x={300} y={420} size={100} color="#fff" s={back((lt - m.fly) / 0.3)} o={1 - k(lt, m.fly + 1.3, m.fly + 1.7)} glow="#ff2d95">WOW</Txt> : null}
       </Cam>
       <LightLeak t={t} a={0.45} />
@@ -440,7 +440,7 @@ export const NewsScene: React.FC<SP> = ({lt, m, t}) => {
             <Person key={i} x={x} y={y} s={s} part="bust" p={CROWD[i]} hair={i % 2 ? 'short' : 'bun'} expr="neutral" turn={turn * k(sl, 0.1 + i * 0.12, 0.4 + i * 0.12)} look={[turn > 0 ? 1 : -1, 0]} />
           ))}
           <Person x={540} y={930} s={1.35} part="bust" expr="worried" look={[Math.sin(t * 2.4), 0]} armL={[0.3, -0.4]} armR={[0.3, -0.4]} />
-          {[[300, 470], [790, 470], [110, 520], [970, 520]].map(([x, y], i) => <Txt key={i} x={x} y={y} size={64} s={back((sl - i * 0.12) / 0.3)}>👀</Txt>)}
+          {[[300, 575], [790, 575], [110, 625], [970, 625]].map(([x, y], i) => <Txt key={i} x={x} y={y} size={64} s={back((sl - i * 0.12) / 0.3)}>👀</Txt>)}
         </Cam>
         <LightLeak t={t} a={0.25} />
       </AbsoluteFill>
@@ -577,7 +577,7 @@ export const CtaScene: React.FC<SP> = ({lt, m, t}) => {
         <Robot x={540} y={520} s={1.3} t={t} mood="angry" />
       </Cam>
       <div style={{marginTop: 900, fontFamily: MONT, fontWeight: 900, fontSize: 190, color: '#fff', textShadow: '6px 0 #ff2bd6, -6px 0 #00f0ff', scale: String(back(lt / 0.4))}}>PART 2?</div>
-      <div style={{marginTop: 30, opacity: k(lt, m.follow - 0.2, m.follow + 0.1), scale: String(1 - press * 0.1), background: followed ? '#2b2f4a' : '#e63946', color: '#fff', fontFamily: MONT, fontWeight: 900, fontSize: 64, padding: '22px 70px', borderRadius: 999}}>{followed ? '✓ FOLLOWING' : '+ FOLLOW'}</div>
+      <div style={{marginTop: 30, opacity: k(lt, m.follow - 0.2, m.follow + 0.1), scale: String(1 - press * 0.1), background: followed ? '#3a3a3a' : '#ff0033', color: '#fff', fontFamily: MONT, fontWeight: 900, fontSize: 64, padding: '22px 70px', borderRadius: 999}}>{followed ? '✓ SUBSCRIBED' : 'SUBSCRIBE'}</div>
     </AbsoluteFill>
   );
 };

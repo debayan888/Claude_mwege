@@ -25,7 +25,7 @@ export const hash = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453;
 export const useT = () => { const f = useCurrentFrame(); const {fps} = useVideoConfig(); return f / fps; };
 
 // ---------- captions synced to the narration, word by word ----------
-const HOT = new Set(['2100', 'twenty-one', 'hundred', 'frozen', 'seventy-five', 'fly', 'trees', 'museum', 'face', 'printed', "that's", 'you', 'staring', 'from', '2025', "don't", 'trust', 'robot', 'behind', 'two?', 'follow,']);
+const HOT = new Set(['2100', 'twenty-one', 'hundred', 'frozen', 'seventy-five', 'fly', 'trees', 'museum', 'face', 'printed', "that's", 'you', 'staring', 'from', '2025', "don't", 'trust', 'robot', 'behind', 'two?', 'follow,', 'subscribe,']);
 type Chunk = {words: Scene['words']; start: number; end: number};
 const chunks: Chunk[] = (() => {
   const all = SCENES.flatMap((s) => s.words);

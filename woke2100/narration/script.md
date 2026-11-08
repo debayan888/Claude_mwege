@@ -28,4 +28,4 @@ Inside the museum glass, your old phone buzzes. [#msg] One new message. [#from] 
 It says. [#read] Don't trust the robot. [#behind] And the robot is standing right behind you.
 
 ## cta {hold=1.2}
-Part two? [#follow] Follow, so you don't miss it.
+Part two? [#follow] Subscribe, so you don't miss it.
